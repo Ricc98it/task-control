@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import Button from "@/components/Button";
 import EmptyState from "@/components/EmptyState";
@@ -14,6 +15,7 @@ import { ensureSession } from "@/lib/autoSession";
 import { type Project } from "@/lib/tasks";
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -74,6 +76,7 @@ export default function ProjectsPage() {
       .select("id,name")
       .order("name");
     setProjects((data ?? []) as Project[]);
+    router.refresh();
   }
 
   async function deleteProject(project: Project) {
@@ -93,6 +96,7 @@ export default function ProjectsPage() {
     }
 
     setProjects((prev) => prev.filter((item) => item.id !== project.id));
+    router.refresh();
   }
 
   function startRename(project: Project) {
@@ -134,6 +138,7 @@ export default function ProjectsPage() {
     );
     setEditingId(null);
     setEditName("");
+    router.refresh();
   }
 
   const total = useMemo(() => projects.length, [projects]);

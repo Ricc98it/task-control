@@ -135,7 +135,7 @@ export default function DonePage() {
                     <div className="flex items-start justify-between gap-3 w-full">
                       <div>
                         <Link
-                          className="link-primary"
+                          className="link-primary stretched-link"
                           href={`/task/${task.id}`}
                         >
                           {task.title}

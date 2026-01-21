@@ -993,11 +993,24 @@ select.glass-input {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
+  position: relative;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: rgba(15, 23, 42, 0.4);
   transition: border-color 0.2s ease, background 0.2s ease,
     transform 0.2s ease;
+}
+
+.stretched-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.stretched-guard {
+  position: relative;
+  z-index: 2;
 }
 
 .list-row:hover {
@@ -1088,6 +1101,8 @@ select.glass-input {
 }
 
 .nav-shell {
+  display: flex;
+  justify-content: center;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);
   background: rgba(8, 12, 22, 0.92);
@@ -1098,10 +1113,10 @@ select.glass-input {
 
 .nav-board {
   display: grid;
-  grid-template-columns: minmax(30px, 0.35fr) repeat(5, minmax(0, 1fr));
+  grid-template-columns: minmax(30px, 0.35fr) repeat(4, minmax(0, 1fr));
   gap: 12px;
-  max-width: 1240px;
-  margin: 0 auto;
+  max-width: 1024px;
+  width: 100%;
 }
 
 .nav-logo {

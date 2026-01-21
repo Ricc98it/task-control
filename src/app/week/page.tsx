@@ -36,6 +36,7 @@ export default function WeekPage() {
   const dropHandledRef = useRef(false);
   const draggingIdRef = useRef<string | null>(null);
   const draggingFromRef = useRef<string | null>(null);
+  const draggingDeadlineIdRef = useRef<string | null>(null);
   const today = useMemo(() => todayISO(), []);
 
   const days = useMemo<DropTarget[]>(() => {
@@ -176,6 +177,31 @@ export default function WeekPage() {
     if (error) setErr(error.message);
   }
 
+  async function clearDeadline(taskId: string) {
+    setErr(null);
+    const current = deadlines.find((task) => task.id === taskId);
+    if (!current?.due_date) return;
+    const payload: Pick<Task, "due_date"> = { due_date: null };
+
+    setDeadlines((prev) => prev.filter((task) => task.id !== taskId));
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId ? { ...task, due_date: null } : task
+      )
+    );
+
+    const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
+    if (error) {
+      setErr(error.message);
+      setDeadlines((prev) => [current, ...prev]);
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === taskId ? { ...task, due_date: current.due_date } : task
+        )
+      );
+    }
+  }
+
   async function removeDayFromTask(taskId: string, day: string) {
     setErr(null);
     const currentTask = tasks.find((task) => task.id === taskId);
@@ -207,6 +233,7 @@ export default function WeekPage() {
       ? fromData.replace("deadline:", "")
       : "";
     if (deadlineId && targetDate) {
+      dropHandledRef.current = true;
       moveDeadline(deadlineId, targetDate);
       setHoverTarget(null);
       return;
@@ -314,20 +341,37 @@ export default function WeekPage() {
                           className="deadline-chip"
                           draggable
                           onDragStart={(event) => {
-                            event.dataTransfer.setData(
-                              "application/x-deadline-task",
-                              task.id
-                            );
-                            event.dataTransfer.setData(
-                              "text/plain",
-                              `deadline:${task.id}`
-                            );
-                            event.dataTransfer.effectAllowed = "move";
-                          }}
-                        >
-                          {task.title}
-                        </Link>
-                      ))}
+                          event.dataTransfer.setData(
+                            "application/x-deadline-task",
+                            task.id
+                          );
+                          event.dataTransfer.setData(
+                            "text/plain",
+                            `deadline:${task.id}`
+                          );
+                          event.dataTransfer.effectAllowed = "move";
+                          dropHandledRef.current = false;
+                          draggingDeadlineIdRef.current = task.id;
+                        }}
+                        onDragEnd={(event) => {
+                          const raw = event.dataTransfer.getData("text/plain");
+                          const fallbackId = raw.startsWith("deadline:")
+                            ? raw.replace("deadline:", "")
+                            : raw;
+                          const taskId =
+                            draggingDeadlineIdRef.current ??
+                            event.dataTransfer.getData("application/x-deadline-task") ??
+                            fallbackId;
+                          if (!dropHandledRef.current && taskId) {
+                            clearDeadline(taskId);
+                          }
+                          dropHandledRef.current = false;
+                          draggingDeadlineIdRef.current = null;
+                        }}
+                      >
+                        {task.title}
+                      </Link>
+                    ))}
                     </div>
                   )}
 

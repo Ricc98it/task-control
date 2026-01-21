@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import DatePicker from "@/components/DatePicker";
 import Button from "@/components/Button";
 import EmptyState from "@/components/EmptyState";
 import Icon from "@/components/Icon";
 import ListRow from "@/components/ListRow";
-import PageHeader from "@/components/PageHeader";
 import SectionHeader from "@/components/SectionHeader";
 import Select from "@/components/Select";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
+import { emitTasksUpdated, onTasksUpdated } from "@/lib/taskEvents";
 import {
   formatDisplayDate,
   getPriorityMeta,
@@ -30,6 +31,7 @@ type SessionState = "loading" | "authed" | "anon";
 const NEW_PROJECT_VALUE = "__new_project__";
 
 export default function HomePage() {
+  const router = useRouter();
   const [sessionState, setSessionState] = useState<SessionState>("loading");
   const [upcoming, setUpcoming] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -66,36 +68,45 @@ export default function HomePage() {
     };
   }, []);
 
+  const loadHomeData = useCallback(async () => {
+    const [upcomingRes, projectsRes] = await Promise.all([
+      supabase
+        .from("tasks")
+        .select(
+          "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name)"
+        )
+        .eq("status", "OPEN")
+        .not("due_date", "is", null)
+        .order("due_date", { ascending: true })
+        .limit(5),
+      supabase.from("projects").select("id,name").order("name"),
+    ]);
+
+    setUpcoming(normalizeTasks(upcomingRes.data ?? []));
+    setProjects((projectsRes.data ?? []) as Project[]);
+  }, []);
+
   useEffect(() => {
     if (sessionState !== "authed") return;
     let active = true;
 
-    async function loadHomeData() {
-      const [upcomingRes, projectsRes] = await Promise.all([
-        supabase
-          .from("tasks")
-          .select(
-            "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name)"
-          )
-          .eq("status", "OPEN")
-          .not("due_date", "is", null)
-          .order("due_date", { ascending: true })
-          .limit(5),
-        supabase.from("projects").select("id,name").order("name"),
-      ]);
-
+    loadHomeData().catch(() => {
       if (!active) return;
-
-      setUpcoming(normalizeTasks(upcomingRes.data ?? []));
-      setProjects((projectsRes.data ?? []) as Project[]);
-    }
-
-    loadHomeData();
+      setUpcoming([]);
+      setProjects([]);
+    });
 
     return () => {
       active = false;
     };
-  }, [sessionState]);
+  }, [loadHomeData, sessionState]);
+
+  useEffect(() => {
+    if (sessionState !== "authed") return;
+    return onTasksUpdated(() => {
+      loadHomeData().catch(() => {});
+    });
+  }, [loadHomeData, sessionState]);
 
   useEffect(() => {
     if (!quickToast) return;
@@ -146,6 +157,7 @@ export default function HomePage() {
     setQuickToast(
       normalizedWorkDays ? "Task pianificato." : "Task aggiunto in Inbox."
     );
+    emitTasksUpdated();
     setQuickTitle("");
     setQuickWorkDays([]);
     setQuickDueDate("");
@@ -181,6 +193,7 @@ export default function HomePage() {
     setQuickProject(data.id);
     setQuickProjectDraft("");
     setQuickProjectErr(null);
+    router.refresh();
   }
 
   function handleQuickProjectChange(next: string) {
@@ -206,31 +219,6 @@ export default function HomePage() {
       <Nav />
       <main className="min-h-screen px-6 py-10">
         <div className="app-shell max-w-5xl mx-auto">
-          <div className="px-8 pt-8">
-            <PageHeader
-              title="Home"
-              subtitle="Centro di controllo per cattura, pianificazione e focus."
-              right={
-                isAuthed ? (
-                  <>
-                    <Link href="/today" className="btn-secondary px-4 py-2 text-sm">
-                      <Icon name="calendar" />
-                      Vai a Oggi
-                    </Link>
-                    <Link href="/new" className="btn-primary px-4 py-2 text-sm">
-                      <Icon name="plus" />
-                      Nuovo task
-                    </Link>
-                  </>
-                ) : (
-                  <Link href="/login" className="btn-primary px-4 py-2 text-sm">
-                    Accedi
-                  </Link>
-                )
-              }
-            />
-          </div>
-
           {isAuthed ? (
             <section className="px-8 py-10">
               <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
@@ -409,7 +397,7 @@ export default function HomePage() {
                             <div className="min-w-0">
                               <Link
                                 href={`/task/${task.id}`}
-                                className="link-primary"
+                                className="link-primary stretched-link"
                               >
                                 {task.title}
                               </Link>

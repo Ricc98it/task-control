@@ -11,6 +11,7 @@ import SectionHeader from "@/components/SectionHeader";
 import Select from "@/components/Select";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
+import { emitTasksUpdated } from "@/lib/taskEvents";
 import {
   PRIORITY_OPTIONS,
   STATUS_OPTIONS,
@@ -108,6 +109,7 @@ export default function NewTaskPage() {
       return;
     }
 
+    emitTasksUpdated();
     router.push("/today");
   }
 

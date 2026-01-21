@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
 import { addDays, formatISODate, startOfWeek, todayISO } from "@/lib/tasks";
+import { onTasksUpdated } from "@/lib/taskEvents";
 
 type SessionState = "loading" | "authed" | "anon";
 type SummaryKey = "inbox" | "today" | "week" | "overdue" | "projects";
@@ -25,13 +26,6 @@ const flowBoard: FlowCard[] = [
     hint: "Start",
     desc: "Panoramica generale.",
     variant: "home",
-  },
-  {
-    href: "/inbox",
-    label: "📥 Cattura",
-    hint: "Inbox",
-    desc: "Raccogli tutto in un punto.",
-    key: "inbox",
   },
   {
     href: "/week",
@@ -67,9 +61,6 @@ function resolveActiveFlow(pathname: string | null) {
   if (!pathname) return null;
   if (pathname === "/") {
     return "/";
-  }
-  if (pathname.startsWith("/inbox") || pathname.startsWith("/new")) {
-    return "/inbox";
   }
   if (pathname.startsWith("/week")) {
     return "/week";
@@ -120,6 +111,47 @@ export default function Nav() {
     };
   }, []);
 
+  const loadSummary = useCallback(async () => {
+    const weekStart = startOfWeek(new Date());
+    const weekDays = Array.from({ length: 7 }, (_, index) =>
+      formatISODate(addDays(weekStart, index))
+    );
+    const today = todayISO();
+
+    const [inboxRes, todayRes, weekRes, overdueRes, projectsRes] =
+      await Promise.all([
+      supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "INBOX"),
+      supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "OPEN")
+        .contains("work_days", [today]),
+      supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "OPEN")
+        .overlaps("work_days", weekDays),
+      supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["OPEN", "INBOX"]),
+      supabase
+        .from("projects")
+        .select("id", { count: "exact", head: true }),
+    ]);
+
+    return {
+      inbox: inboxRes.count ?? 0,
+      today: todayRes.count ?? 0,
+      week: weekRes.count ?? 0,
+      overdue: overdueRes.count ?? 0,
+      projects: projectsRes.count ?? 0,
+    };
+  }, []);
+
   useEffect(() => {
     if (sessionState !== "authed") {
       setSummary(null);
@@ -127,56 +159,35 @@ export default function Nav() {
     }
 
     let active = true;
-
-    async function loadSummary() {
-      const weekStart = startOfWeek(new Date());
-      const weekDays = Array.from({ length: 7 }, (_, index) =>
-        formatISODate(addDays(weekStart, index))
-      );
-      const today = todayISO();
-
-      const [inboxRes, todayRes, weekRes, overdueRes, projectsRes] =
-        await Promise.all([
-        supabase
-          .from("tasks")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "INBOX"),
-        supabase
-          .from("tasks")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "OPEN")
-          .contains("work_days", [today]),
-        supabase
-          .from("tasks")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "OPEN")
-          .overlaps("work_days", weekDays),
-        supabase
-          .from("tasks")
-          .select("id", { count: "exact", head: true })
-          .in("status", ["OPEN", "INBOX"]),
-        supabase
-          .from("projects")
-          .select("id", { count: "exact", head: true }),
-      ]);
-
-      if (!active) return;
-
-      setSummary({
-        inbox: inboxRes.count ?? 0,
-        today: todayRes.count ?? 0,
-        week: weekRes.count ?? 0,
-        overdue: overdueRes.count ?? 0,
-        projects: projectsRes.count ?? 0,
+    loadSummary()
+      .then((next) => {
+        if (!active) return;
+        setSummary(next);
+      })
+      .catch(() => {
+        if (!active) return;
+        setSummary({
+          inbox: 0,
+          today: 0,
+          week: 0,
+          overdue: 0,
+          projects: 0,
+        });
       });
-    }
-
-    loadSummary();
 
     return () => {
       active = false;
     };
-  }, [sessionState]);
+  }, [loadSummary, sessionState]);
+
+  useEffect(() => {
+    if (sessionState !== "authed") return;
+    return onTasksUpdated(() => {
+      loadSummary()
+        .then((next) => setSummary(next))
+        .catch(() => {});
+    });
+  }, [loadSummary, sessionState]);
 
   return (
     <div className="sticky top-0 z-20">

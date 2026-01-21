@@ -11,6 +11,7 @@ import SectionHeader from "@/components/SectionHeader";
 import Select from "@/components/Select";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
+import { emitTasksUpdated } from "@/lib/taskEvents";
 import {
   formatStatusLabel,
   formatISODate,
@@ -115,8 +116,31 @@ export default function TaskDetailPage() {
     loadProjects();
   }, []);
 
+  async function deleteTask(nextPath: string) {
+    if (!task) return;
+    setErr(null);
+    setSaving(true);
+
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", task.id);
+
+    setSaving(false);
+    if (error) setErr(error.message);
+    else {
+      emitTasksUpdated();
+      router.push(nextPath);
+    }
+  }
+
   async function save() {
     if (!task) return;
+    if (status === "DONE") {
+      await deleteTask("/all");
+      return;
+    }
+
     setErr(null);
     setSaving(true);
 
@@ -149,18 +173,7 @@ export default function TaskDetailPage() {
   }
 
   async function complete() {
-    if (!task) return;
-    setErr(null);
-    setSaving(true);
-
-    const { error } = await supabase
-      .from("tasks")
-      .delete()
-      .eq("id", task.id);
-
-    setSaving(false);
-    if (error) setErr(error.message);
-    else router.push("/today"); // completato = eliminato
+    await deleteTask("/today"); // completato = eliminato
   }
 
   async function sendToToday() {

@@ -3,13 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import DatePicker from "@/components/DatePicker";
+import Button from "@/components/Button";
 import ListRow from "@/components/ListRow";
+import Icon from "@/components/Icon";
 import PageHeader from "@/components/PageHeader";
 import SectionHeader from "@/components/SectionHeader";
 import SkeletonList from "@/components/SkeletonList";
 import Select from "@/components/Select";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
+import { emitTasksUpdated } from "@/lib/taskEvents";
 import {
   formatStatusLabel,
   formatDisplayDate,
@@ -31,6 +35,9 @@ export default function AllTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "INBOX">(
     "ALL"
   );
@@ -43,10 +50,12 @@ export default function AllTasksPage() {
   useEffect(() => {
     async function run() {
       setLoading(true);
+      setErr(null);
       try {
         await ensureSession();
       } catch (error) {
         console.error(error);
+        setErr(error instanceof Error ? error.message : "Errore sessione.");
         setLoading(false);
         return;
       }
@@ -79,7 +88,11 @@ export default function AllTasksPage() {
         supabase.from("projects").select("id,name").order("name"),
       ]);
 
-      if (!error) setTasks(normalizeTasks(data ?? []));
+      if (error) {
+        setErr(error.message);
+      } else {
+        setTasks(normalizeTasks(data ?? []));
+      }
       setProjects((projectsData ?? []) as Project[]);
       setLoading(false);
     }
@@ -116,6 +129,78 @@ export default function AllTasksPage() {
     [projects]
   );
 
+  async function updateTaskFields(
+    task: Task,
+    updates: Partial<Pick<Task, "work_days" | "due_date" | "status">>
+  ) {
+    const payload = Object.entries(updates).reduce<Record<string, unknown>>(
+      (acc, [key, value]) => {
+        if (value !== undefined) acc[key] = value;
+        return acc;
+      },
+      {}
+    );
+    if (Object.keys(payload).length === 0) return;
+
+    setErr(null);
+    setUpdatingId(task.id);
+    const previous = task;
+    const nextStatus = updates.status ?? task.status;
+    setTasks((prev) =>
+      prev.map((item) =>
+        item.id === task.id ? { ...item, ...updates } : item
+      )
+    );
+
+    const { error } = await supabase
+      .from("tasks")
+      .update(payload)
+      .eq("id", task.id);
+
+    setUpdatingId(null);
+    if (error) {
+      setErr(error.message);
+      setTasks((prev) =>
+        prev.map((item) => (item.id === task.id ? previous : item))
+      );
+    } else if (statusFilter !== "ALL" && nextStatus !== statusFilter) {
+      setTasks((prev) => prev.filter((item) => item.id !== task.id));
+    }
+  }
+
+  function handleWorkDaysChange(task: Task, next: string[]) {
+    const normalized =
+      next.length > 0 ? Array.from(new Set(next)).sort() : null;
+    const updates: Partial<Pick<Task, "work_days" | "status">> = {
+      work_days: normalized,
+    };
+    if (task.status === "INBOX" && normalized) {
+      updates.status = "OPEN";
+    }
+    updateTaskFields(task, updates);
+  }
+
+  function handleDueDateChange(task: Task, next: string) {
+    const due = next ? next : null;
+    updateTaskFields(task, { due_date: due });
+  }
+
+  async function markDone(task: Task) {
+    setErr(null);
+    setMarkingId(task.id);
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", task.id);
+    setMarkingId(null);
+    if (error) {
+      setErr(error.message);
+      return;
+    }
+    setTasks((prev) => prev.filter((item) => item.id !== task.id));
+    emitTasksUpdated();
+  }
+
   return (
     <>
       <Nav />
@@ -125,6 +210,12 @@ export default function AllTasksPage() {
             title="Tutti i task"
             subtitle={loading ? "Caricamento..." : `${totalCount} task attivi`}
           />
+
+          {err && (
+            <p className="mt-4 text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl">
+              {err}
+            </p>
+          )}
 
           <div className="mt-6 glass-panel p-4">
             <SectionHeader
@@ -179,8 +270,24 @@ export default function AllTasksPage() {
             <SkeletonList rows={4} />
           ) : (
             <div className="mt-6 space-y-10">
-              <Section title="💼 Lavoro" items={work} />
-              <Section title="🏡 Personale" items={personal} />
+              <Section
+                title="💼 Lavoro"
+                items={work}
+                markingId={markingId}
+                onComplete={markDone}
+                updatingId={updatingId}
+                onWorkDaysChange={handleWorkDaysChange}
+                onDueDateChange={handleDueDateChange}
+              />
+              <Section
+                title="🏡 Personale"
+                items={personal}
+                markingId={markingId}
+                onComplete={markDone}
+                updatingId={updatingId}
+                onWorkDaysChange={handleWorkDaysChange}
+                onDueDateChange={handleDueDateChange}
+              />
             </div>
           )}
         </div>
@@ -189,7 +296,23 @@ export default function AllTasksPage() {
   );
 }
 
-function Section({ title, items }: { title: string; items: Task[] }) {
+function Section({
+  title,
+  items,
+  onComplete,
+  markingId,
+  updatingId,
+  onWorkDaysChange,
+  onDueDateChange,
+}: {
+  title: string;
+  items: Task[];
+  onComplete: (task: Task) => void;
+  markingId: string | null;
+  updatingId: string | null;
+  onWorkDaysChange: (task: Task, next: string[]) => void;
+  onDueDateChange: (task: Task, next: string) => void;
+}) {
   return (
     <section>
       <SectionHeader
@@ -220,7 +343,7 @@ function Section({ title, items }: { title: string; items: Task[] }) {
                 <div className="flex items-start justify-between gap-3 w-full">
                   <div>
                     <Link
-                      className="link-primary"
+                      className="link-primary stretched-link"
                       href={`/task/${t.id}`}
                     >
                       {t.title}
@@ -231,6 +354,25 @@ function Section({ title, items }: { title: string; items: Task[] }) {
                       </p>
                     ) : null}
                     <p className="meta-line mt-1">{meta}</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2 max-w-md stretched-guard">
+                      <DatePicker
+                        mode="multiple"
+                        value={t.work_days ?? []}
+                        onChange={(next) => onWorkDaysChange(t, next)}
+                        inputClassName="px-3 py-2"
+                        placeholder="Giorni di lavoro"
+                        ariaLabel="Giorni di lavoro"
+                        disabled={updatingId === t.id}
+                      />
+                      <DatePicker
+                        value={t.due_date ?? ""}
+                        onChange={(next) => onDueDateChange(t, next)}
+                        inputClassName="px-3 py-2"
+                        placeholder="Scadenza"
+                        ariaLabel="Scadenza"
+                        disabled={updatingId === t.id}
+                      />
+                    </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span
@@ -243,6 +385,16 @@ function Section({ title, items }: { title: string; items: Task[] }) {
                     >
                       {formatStatusLabel(t.status, hasWorkDays)}
                     </span>
+                    <Button
+                      variant="tertiary"
+                      size="sm"
+                      disabled={markingId === t.id}
+                      onClick={() => onComplete(t)}
+                      className="stretched-guard"
+                      icon={<Icon name="check" size={16} />}
+                    >
+                      Completa
+                    </Button>
                   </div>
                 </div>
               </ListRow>

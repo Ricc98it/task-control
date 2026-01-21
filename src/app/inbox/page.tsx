@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import DatePicker from "@/components/DatePicker";
 import Button from "@/components/Button";
@@ -8,10 +10,12 @@ import EmptyState from "@/components/EmptyState";
 import Icon from "@/components/Icon";
 import ListRow from "@/components/ListRow";
 import PageHeader from "@/components/PageHeader";
+import SectionHeader from "@/components/SectionHeader";
 import SkeletonList from "@/components/SkeletonList";
 import Select from "@/components/Select";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
+import { emitTasksUpdated } from "@/lib/taskEvents";
 import {
   formatTypeLabel,
   getPriorityMeta,
@@ -21,7 +25,6 @@ import {
   joinMeta,
   PRIORITY_OPTIONS,
   TYPE_OPTIONS,
-  todayISO,
   type Project,
   type Task,
   type TaskPriority,
@@ -31,10 +34,11 @@ import {
 const NEW_PROJECT_VALUE = "__new_project__";
 
 export default function InboxPage() {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [planDates, setPlanDates] = useState<Record<string, string[]>>({});
+  const [planDates, setPlanDates] = useState<Record<string, string>>({});
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("WORK");
   const [priority, setPriority] = useState<TaskPriority>("P2");
@@ -45,6 +49,7 @@ export default function InboxPage() {
   const [workDays, setWorkDays] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [schedulingId, setSchedulingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
@@ -146,6 +151,7 @@ export default function InboxPage() {
     if (data && data.status === "INBOX") {
       setTasks((prev) => [normalizeTask(data), ...prev]);
     }
+    emitTasksUpdated();
 
     setTitle("");
     setWorkDays([]);
@@ -182,6 +188,7 @@ export default function InboxPage() {
     setProjectId(data.id);
     setProjectDraft("");
     setProjectErr(null);
+    router.refresh();
   }
 
   function handleProjectChange(next: string) {
@@ -196,18 +203,26 @@ export default function InboxPage() {
     }
 
     setErr(null);
+    setSchedulingId(id);
     const normalized = Array.from(new Set(dates)).sort();
     const { error } = await supabase
       .from("tasks")
       .update({ status: "OPEN", work_days: normalized })
       .eq("id", id);
 
+    setSchedulingId(null);
     if (error) {
       setErr(error.message);
       return;
     }
 
     setTasks((prev) => prev.filter((t) => t.id !== id));
+    setPlanDates((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
   const total = useMemo(() => tasks.length, [tasks]);
@@ -378,6 +393,81 @@ export default function InboxPage() {
             </form>
           </section>
 
+          <section className="mt-8">
+            <SectionHeader
+              title="Inbox da pianificare"
+              subtitle="Seleziona il giorno di lavoro per spostarli in Pianificati."
+            />
+            {loading ? (
+              <SkeletonList rows={3} />
+            ) : tasks.length === 0 ? (
+              <EmptyState
+                title="Nessun task in Inbox"
+                description="Quando aggiungi un task senza data lo troverai qui."
+              />
+            ) : (
+              <ul className="mt-4 list-stack">
+                {tasks.map((task) => {
+                  const meta = joinMeta([
+                    task.project?.name ?? null,
+                    task.due_date
+                      ? `Scadenza: ${formatDisplayDate(task.due_date)}`
+                      : null,
+                  ]);
+                  const priorityMeta = getPriorityMeta(task.priority);
+                  return (
+                    <ListRow key={task.id} className="list-row-lg list-row-start">
+                      <div className="flex items-start justify-between gap-3 w-full">
+                        <div className="min-w-0">
+                          <Link
+                            href={`/task/${task.id}`}
+                            className="link-primary stretched-link"
+                          >
+                            {task.title}
+                          </Link>
+                          {meta ? <p className="meta-line mt-1">{meta}</p> : null}
+                          <div className="mt-2 max-w-xs stretched-guard">
+                            <DatePicker
+                              value={planDates[task.id] ?? ""}
+                              onChange={(next) => {
+                                setPlanDates((prev) => ({
+                                  ...prev,
+                                  [task.id]: next,
+                                }));
+                                if (next) {
+                                  scheduleTask(task.id, [next]);
+                                }
+                              }}
+                              inputClassName="px-3 py-2"
+                              placeholder="Pianifica giorno"
+                              ariaLabel="Pianifica giorno"
+                              disabled={schedulingId === task.id}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`badge-pill priority-pill priority-${priorityMeta.tone} px-2 py-1`}
+                          >
+                            {priorityMeta.emoji} {priorityMeta.label}
+                          </span>
+                          <span
+                            className={`badge-pill type-pill ${
+                              task.type === "WORK"
+                                ? "type-work"
+                                : "type-personal"
+                            } px-2 py-1`}
+                          >
+                            {formatTypeLabel(task.type)}
+                          </span>
+                        </div>
+                      </div>
+                    </ListRow>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
         </div>
       </main>
     </>
