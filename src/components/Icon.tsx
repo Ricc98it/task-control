@@ -26,7 +26,7 @@ export default function Icon({ name, size = 18, className }: IconProps) {
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
     "aria-hidden": true,
-    focusable: "false",
+    focusable: false,
     className,
   };
 
