@@ -11,6 +11,7 @@ import ListRow from "@/components/ListRow";
 import SectionHeader from "@/components/SectionHeader";
 import Select from "@/components/Select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
 import { emitTasksUpdated, onTasksUpdated } from "@/lib/taskEvents";
@@ -28,11 +29,47 @@ import {
 } from "@/lib/tasks";
 
 type SessionState = "loading" | "authed" | "anon";
+type Profile = {
+  user_id: string;
+  email: string;
+  full_name: string;
+};
 const NEW_PROJECT_VALUE = "__new_project__";
+
+function formatNameFromEmail(email: string): string {
+  const local = email.split("@")[0]?.trim();
+  if (!local) return email;
+  const cleaned = local.replace(/[._-]+/g, " ").trim();
+  if (!cleaned) return local;
+  return cleaned
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function resolveUserName(user: User | null): string | null {
+  if (!user) return null;
+  const metadata = user.user_metadata ?? {};
+  const metaName =
+    typeof metadata.full_name === "string"
+      ? metadata.full_name
+      : typeof metadata.name === "string"
+      ? metadata.name
+      : null;
+  if (metaName && metaName.trim()) return metaName.trim();
+  if (user.email) return formatNameFromEmail(user.email);
+  return null;
+}
 
 export default function HomePage() {
   const router = useRouter();
   const [sessionState, setSessionState] = useState<SessionState>("loading");
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
   const [upcoming, setUpcoming] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [quickTitle, setQuickTitle] = useState("");
@@ -56,17 +93,67 @@ export default function HomePage() {
     ensureSession()
       .then((session) => {
         if (!active) return;
-        setSessionState(session ? "authed" : "anon");
+        if (!session) {
+          setSessionState("anon");
+          setSessionUser(null);
+          setUserName(null);
+          router.replace("/login");
+          return;
+        }
+        setSessionState("authed");
+        setSessionUser(session.user ?? null);
+        setUserName(resolveUserName(session.user ?? null));
       })
       .catch(() => {
         if (!active) return;
         setSessionState("anon");
+        setSessionUser(null);
+        setUserName(null);
+        router.replace("/login");
       });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [router]);
+
+  useEffect(() => {
+    if (sessionState !== "authed" || !sessionUser) return;
+    let active = true;
+    setProfileLoading(true);
+    setProfileChecked(false);
+
+    supabase
+      .from("profiles")
+      .select("user_id,full_name,email")
+      .eq("user_id", sessionUser.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) console.error(error);
+        setProfile(
+          data
+            ? {
+                user_id: data.user_id,
+                email: data.email,
+                full_name: data.full_name,
+              }
+            : null
+        );
+        setProfileLoading(false);
+        setProfileChecked(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProfile(null);
+        setProfileLoading(false);
+        setProfileChecked(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [sessionState, sessionUser]);
 
   const loadHomeData = useCallback(async () => {
     const [upcomingRes, projectsRes] = await Promise.all([
@@ -202,6 +289,10 @@ export default function HomePage() {
   }
 
   const isAuthed = sessionState === "authed";
+  const shouldOnboard =
+    isAuthed && profileChecked && !profileLoading && !profile?.full_name;
+  const greetingName = profile?.full_name ?? userName;
+  const greeting = greetingName ? `Ciao ${greetingName}!` : "Ciao!";
   const projectOptions = useMemo(
     () => [
       { value: "", label: "🗂️ Nessun progetto" },
@@ -214,10 +305,37 @@ export default function HomePage() {
     [projects]
   );
 
+  useEffect(() => {
+    if (!shouldOnboard) return;
+    router.replace("/welcome");
+  }, [router, shouldOnboard]);
+
+  if (shouldOnboard) {
+    return null;
+  }
+
+  if (isAuthed && !profileChecked) {
+    return (
+      <>
+        <Nav />
+        <main className="min-h-screen px-6 py-10">
+          <div className="app-shell max-w-5xl mx-auto p-6 sm:p-8">
+            <p className="meta-line">Caricamento profilo...</p>
+          </div>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <Nav />
       <main className="min-h-screen px-6 py-10">
+        {isAuthed && (
+          <div className="text-center mb-8">
+            <h2 className="page-title">{greeting}</h2>
+          </div>
+        )}
         <div className="app-shell max-w-5xl mx-auto">
           {isAuthed ? (
             <section className="px-8 py-10">

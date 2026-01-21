@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
@@ -82,9 +82,11 @@ function resolveActiveFlow(pathname: string | null) {
 }
 
 export default function Nav() {
+  const router = useRouter();
   const pathname = usePathname();
   const activeFlow = resolveActiveFlow(pathname);
   const [sessionState, setSessionState] = useState<SessionState>("loading");
+  const [loggingOut, setLoggingOut] = useState(false);
   const [summary, setSummary] = useState<{
     inbox: number;
     today: number;
@@ -99,17 +101,23 @@ export default function Nav() {
     ensureSession()
       .then((session) => {
         if (!active) return;
-        setSessionState(session ? "authed" : "anon");
+        if (!session) {
+          setSessionState("anon");
+          router.replace("/login");
+          return;
+        }
+        setSessionState("authed");
       })
       .catch(() => {
         if (!active) return;
         setSessionState("anon");
+        router.replace("/login");
       });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [router]);
 
   const loadSummary = useCallback(async () => {
     const weekStart = startOfWeek(new Date());
@@ -189,6 +197,19 @@ export default function Nav() {
     });
   }, [loadSummary, sessionState]);
 
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    const { error } = await supabase.auth.signOut();
+    setLoggingOut(false);
+    if (error) {
+      console.error(error);
+      return;
+    }
+    setSessionState("anon");
+    router.replace("/login");
+  }
+
   return (
     <div className="sticky top-0 z-20">
       <div className="nav-shell">
@@ -243,6 +264,22 @@ export default function Nav() {
               </Link>
             );
           })}
+          {sessionState === "authed" && (
+            <div className="nav-logout">
+              <button
+                type="button"
+                className="flow-card flow-card-home nav-logout-button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                aria-label="Logout"
+                title="Logout"
+              >
+                <span className="flow-card-home-emoji">
+                  {loggingOut ? "⏳" : "🚪"}
+                </span>
+              </button>
+            </div>
+          )}
         </nav>
       </div>
     </div>

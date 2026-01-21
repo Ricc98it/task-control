@@ -61,7 +61,11 @@ export default function TaskDetailPage() {
   useEffect(() => {
     async function load() {
       try {
-        await ensureSession();
+        const session = await ensureSession();
+        if (!session) {
+          setLoading(false);
+          return;
+        }
       } catch (error) {
         setErr(error instanceof Error ? error.message : "Errore sessione.");
         setLoading(false);

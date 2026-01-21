@@ -74,7 +74,12 @@ export default function WeekPage() {
       const weekEndISO = formatISODate(addDays(weekStart, 4));
 
       try {
-        await ensureSession();
+        const session = await ensureSession();
+        if (!session) {
+          setErr("Accedi per continuare.");
+          setLoading(false);
+          return;
+        }
       } catch (error) {
         setErr(error instanceof Error ? error.message : "Errore sessione.");
         setLoading(false);

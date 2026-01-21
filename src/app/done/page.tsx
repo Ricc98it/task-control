@@ -34,7 +34,11 @@ export default function DonePage() {
     async function run() {
       setLoading(true);
       try {
-        await ensureSession();
+        const session = await ensureSession();
+        if (!session) {
+          setLoading(false);
+          return;
+        }
       } catch (error) {
         console.error(error);
         setLoading(false);

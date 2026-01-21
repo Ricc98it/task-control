@@ -52,7 +52,12 @@ export default function AllTasksPage() {
       setLoading(true);
       setErr(null);
       try {
-        await ensureSession();
+        const session = await ensureSession();
+        if (!session) {
+          setErr("Accedi per continuare.");
+          setLoading(false);
+          return;
+        }
       } catch (error) {
         console.error(error);
         setErr(error instanceof Error ? error.message : "Errore sessione.");

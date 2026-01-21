@@ -53,7 +53,11 @@ export default function NewTaskPage() {
   useEffect(() => {
     async function loadProjects() {
       try {
-        await ensureSession();
+        const session = await ensureSession();
+        if (!session) {
+          setErr("Accedi per continuare.");
+          return;
+        }
       } catch (error) {
         setErr(error instanceof Error ? error.message : "Errore sessione.");
         return;
@@ -74,7 +78,12 @@ export default function NewTaskPage() {
     setLoading(true);
 
     try {
-      await ensureSession();
+      const session = await ensureSession();
+      if (!session) {
+        setErr("Accedi per continuare.");
+        setLoading(false);
+        return;
+      }
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Errore sessione.");
       setLoading(false);

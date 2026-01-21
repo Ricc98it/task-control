@@ -3,14 +3,26 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ensureSession } from "@/lib/autoSession";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
     ensureSession()
-      .then(() => router.replace("/"))
-      .catch(() => router.replace("/"));
+      .then(async (session) => {
+        if (!session) {
+          router.replace("/login");
+          return;
+        }
+        const { data } = await supabase
+          .from("profiles")
+          .select("user_id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+        router.replace(data ? "/" : "/welcome");
+      })
+      .catch(() => router.replace("/login"));
   }, [router]);
 
   return (

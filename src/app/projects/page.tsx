@@ -31,7 +31,11 @@ export default function ProjectsPage() {
     async function run() {
       setLoading(true);
       try {
-        await ensureSession();
+        const session = await ensureSession();
+        if (!session) {
+          setLoading(false);
+          return;
+        }
       } catch (error) {
         setErr(error instanceof Error ? error.message : "Errore sessione.");
         setLoading(false);

@@ -9,12 +9,7 @@ export async function ensureSession(): Promise<Session | null> {
   sessionPromise = (async () => {
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
-    if (data.session) return data.session;
-
-    const { data: anonData, error: anonError } =
-      await supabase.auth.signInAnonymously();
-    if (anonError) throw anonError;
-    return anonData.session ?? null;
+    return data.session ?? null;
   })();
 
   try {
