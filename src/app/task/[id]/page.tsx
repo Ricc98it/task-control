@@ -155,12 +155,12 @@ export default function TaskDetailPage() {
 
     const { error } = await supabase
       .from("tasks")
-      .update({ status: "DONE" })
+      .delete()
       .eq("id", task.id);
 
     setSaving(false);
     if (error) setErr(error.message);
-    else router.push("/today"); // completato = sparisce
+    else router.push("/today"); // completato = eliminato
   }
 
   async function sendToToday() {

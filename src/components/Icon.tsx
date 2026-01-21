@@ -7,7 +7,8 @@ type IconName =
   | "check"
   | "arrow-left"
   | "arrow-right"
-  | "list";
+  | "list"
+  | "home";
 
 type IconProps = {
   name: IconName;
@@ -74,6 +75,14 @@ export default function Icon({ name, size = 18, className }: IconProps) {
         <svg {...common}>
           <path d="M8 6h12M8 12h12M8 18h12" />
           <path d="M4 6h.01M4 12h.01M4 18h.01" />
+        </svg>
+      );
+    case "home":
+      return (
+        <svg {...common}>
+          <path d="M3 10.5l9-7 9 7" />
+          <path d="M5 10v9h14v-9" />
+          <path d="M9 19v-5h6v5" />
         </svg>
       );
     default:

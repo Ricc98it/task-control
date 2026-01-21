@@ -1098,9 +1098,9 @@ select.glass-input {
 
 .nav-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: minmax(30px, 0.35fr) repeat(5, minmax(0, 1fr));
   gap: 12px;
-  max-width: 1120px;
+  max-width: 1240px;
   margin: 0 auto;
 }
 
@@ -1226,6 +1226,19 @@ select.glass-input {
   text-decoration: none;
   transition: border-color 0.2s ease, transform 0.2s ease,
     box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.flow-card-home {
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.flow-card-home-emoji {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .flow-card:hover {

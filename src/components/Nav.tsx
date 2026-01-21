@@ -14,10 +14,18 @@ type FlowCard = {
   label: string;
   hint: string;
   desc: string;
-  key: SummaryKey;
+  key?: SummaryKey;
+  variant?: "home";
 };
 
 const flowBoard: FlowCard[] = [
+  {
+    href: "/",
+    label: "🏠 Home",
+    hint: "Start",
+    desc: "Panoramica generale.",
+    variant: "home",
+  },
   {
     href: "/inbox",
     label: "📥 Cattura",
@@ -57,6 +65,9 @@ const flowBoard: FlowCard[] = [
 
 function resolveActiveFlow(pathname: string | null) {
   if (!pathname) return null;
+  if (pathname === "/") {
+    return "/";
+  }
   if (pathname.startsWith("/inbox") || pathname.startsWith("/new")) {
     return "/inbox";
   }
@@ -140,7 +151,10 @@ export default function Nav() {
           .select("id", { count: "exact", head: true })
           .eq("status", "OPEN")
           .overlaps("work_days", weekDays),
-        supabase.from("tasks").select("id", { count: "exact", head: true }),
+        supabase
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["OPEN", "INBOX"]),
         supabase
           .from("projects")
           .select("id", { count: "exact", head: true }),
@@ -169,9 +183,25 @@ export default function Nav() {
       <div className="nav-shell">
         <nav className="nav-board">
           {flowBoard.map((item) => {
-            const count = summary?.[item.key] ?? 0;
+            const count = item.key ? summary?.[item.key] ?? 0 : 0;
             const isAlert = item.key === "overdue" && count > 0;
             const isActive = activeFlow === item.href;
+            if (item.variant === "home") {
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label="Home"
+                  className={
+                    "flow-card flow-card-home " +
+                    (isActive ? "flow-card-active" : "")
+                  }
+                >
+                  <span className="flow-card-home-emoji">🏠</span>
+                </Link>
+              );
+            }
             return (
               <Link
                 key={item.href}
@@ -179,6 +209,7 @@ export default function Nav() {
                 aria-current={isActive ? "page" : undefined}
                 className={
                   "flow-card " +
+                  (item.variant === "home" ? "flow-card-home " : "") +
                   (isAlert ? "border-rose-400/40 " : "") +
                   (isActive ? "flow-card-active" : "")
                 }
@@ -187,7 +218,7 @@ export default function Nav() {
                   <span className="flow-card-label">{item.label}</span>
                   <span className="flow-card-hint">{item.hint}</span>
                 </div>
-                {sessionState === "authed" ? (
+                {sessionState === "authed" && item.key ? (
                   <span
                     className={
                       "flow-card-count " + (isAlert ? "text-rose-200" : "")
