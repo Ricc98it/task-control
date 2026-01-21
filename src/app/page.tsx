@@ -124,12 +124,13 @@ export default function HomePage() {
     setProfileLoading(true);
     setProfileChecked(false);
 
-    supabase
-      .from("profiles")
-      .select("user_id,full_name,email")
-      .eq("user_id", sessionUser.id)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    const loadProfile = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("user_id,full_name,email")
+          .eq("user_id", sessionUser.id)
+          .maybeSingle();
         if (!active) return;
         if (error) console.error(error);
         setProfile(
@@ -141,15 +142,17 @@ export default function HomePage() {
               }
             : null
         );
-        setProfileLoading(false);
-        setProfileChecked(true);
-      })
-      .catch(() => {
+      } catch (err) {
         if (!active) return;
         setProfile(null);
+      } finally {
+        if (!active) return;
         setProfileLoading(false);
         setProfileChecked(true);
-      });
+      }
+    };
+
+    void loadProfile();
 
     return () => {
       active = false;
