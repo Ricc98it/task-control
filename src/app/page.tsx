@@ -90,8 +90,9 @@ export default function HomePage() {
   useEffect(() => {
     let active = true;
 
-    ensureSession()
-      .then((session) => {
+    (async () => {
+      try {
+        const session = await ensureSession();
         if (!active) return;
         if (!session) {
           setSessionState("anon");
@@ -103,14 +104,14 @@ export default function HomePage() {
         setSessionState("authed");
         setSessionUser(session.user ?? null);
         setUserName(resolveUserName(session.user ?? null));
-      })
-      .catch(() => {
+      } catch (e) {
         if (!active) return;
         setSessionState("anon");
         setSessionUser(null);
         setUserName(null);
         router.replace("/login");
-      });
+      }
+    })();
 
     return () => {
       active = false;
