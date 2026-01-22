@@ -58,6 +58,29 @@ body {
   font-family: var(--font-sans);
 }
 
+.page-stack {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-stack > main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.app-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-page .app-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 a,
 button,
 input,
@@ -901,6 +924,10 @@ select.glass-input {
   color: var(--muted);
 }
 
+.meta-line-alert {
+  color: #f87171;
+}
+
 .list-row.priority-card-p0 {
   border-color: rgba(255, 69, 58, 0.65);
   background: linear-gradient(
@@ -1008,6 +1035,68 @@ select.glass-input {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.week-deadlines-list {
+  max-height: clamp(220px, 40vh, 360px);
+  overflow-y: auto;
+  padding-right: 6px;
+  overscroll-behavior: contain;
+}
+
+.app-page .app-shell.today-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-page .app-shell.week-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.today-content {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.today-grid {
+  display: grid;
+  gap: 24px;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .today-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+.today-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.today-section .list-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  padding-bottom: 26px;
+  overscroll-behavior: contain;
 }
 
 .list-row {
@@ -1339,14 +1428,17 @@ select.glass-input {
 .week-board {
   display: grid;
   gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .week-column {
   padding: 12px 14px 14px;
-  min-height: 260px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
+  height: 100%;
   background: linear-gradient(
     180deg,
     rgba(15, 23, 42, 0.7),
@@ -1403,6 +1495,12 @@ select.glass-input {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  padding-bottom: 26px;
+  overscroll-behavior: contain;
 }
 
 .week-task {
@@ -1435,12 +1533,14 @@ select.glass-input {
 @media (min-width: 1024px) {
   .week-board {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 1023px) {
   .week-board {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
   }
 }
 

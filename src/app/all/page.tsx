@@ -209,7 +209,7 @@ export default function AllTasksPage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-10">
+      <main className="min-h-screen px-6 py-10 app-page">
         <div className="app-shell max-w-5xl mx-auto p-6 sm:p-8">
           <PageHeader
             title="Tutti i task"
@@ -332,7 +332,7 @@ function Section({
             const workSummary = formatWorkDaysSummary(t.work_days ?? []);
             const workLabel =
               t.status === "INBOX"
-                ? "📥 Inbox"
+                ? "📥 Da pianificare"
                 : workSummary
                 ? `Giorni: ${workSummary}`
                 : "🕒 Da pianificare";
@@ -344,7 +344,10 @@ function Section({
             const statusTone = getStatusMeta(t.status).tone;
             const hasWorkDays = Boolean(t.work_days && t.work_days.length > 0);
             return (
-              <ListRow key={t.id} className="list-row-lg list-row-start">
+              <ListRow
+                key={t.id}
+                className={`list-row-lg list-row-start priority-card-${priorityMeta.tone}`}
+              >
                 <div className="flex items-start justify-between gap-3 w-full">
                   <div>
                     <Link
@@ -380,11 +383,6 @@ function Section({
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`badge-pill priority-pill priority-${priorityMeta.tone} px-2 py-1`}
-                    >
-                      {priorityMeta.emoji} {priorityMeta.label}
-                    </span>
                     <span
                       className={`badge-pill status-pill status-${statusTone} px-2 py-1`}
                     >

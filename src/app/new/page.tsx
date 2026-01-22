@@ -125,11 +125,11 @@ export default function NewTaskPage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-10">
+      <main className="min-h-screen px-6 py-10 app-page">
         <div className="app-shell max-w-5xl mx-auto p-6 sm:p-8">
           <PageHeader
             title="Nuovo task"
-            subtitle="Crea un task pronto per inbox o pianificazione."
+            subtitle="Crea un task da pianificare o gia pianificato."
           />
 
           <form onSubmit={createTask} className="mt-6 space-y-6">

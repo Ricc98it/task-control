@@ -16,11 +16,15 @@ import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
 import { emitTasksUpdated, onTasksUpdated } from "@/lib/taskEvents";
 import {
+  addDays,
   formatDisplayDate,
+  formatISODate,
   getPriorityMeta,
   joinMeta,
   normalizeTasks,
   PRIORITY_OPTIONS,
+  startOfWeek,
+  todayISO,
   type Project,
   type Task,
   type TaskPriority,
@@ -160,6 +164,10 @@ export default function HomePage() {
   }, [sessionState, sessionUser]);
 
   const loadHomeData = useCallback(async () => {
+    const weekStart = startOfWeek(new Date());
+    const weekEndISO = formatISODate(addDays(weekStart, 6));
+    const today = todayISO();
+
     const [upcomingRes, projectsRes] = await Promise.all([
       supabase
         .from("tasks")
@@ -168,8 +176,9 @@ export default function HomePage() {
         )
         .eq("status", "OPEN")
         .not("due_date", "is", null)
-        .order("due_date", { ascending: true })
-        .limit(5),
+        .gte("due_date", today)
+        .lte("due_date", weekEndISO)
+        .order("due_date", { ascending: true }),
       supabase.from("projects").select("id,name").order("name"),
     ]);
 
@@ -246,7 +255,7 @@ export default function HomePage() {
     }
 
     setQuickToast(
-      normalizedWorkDays ? "Task pianificato." : "Task aggiunto in Inbox."
+      normalizedWorkDays ? "Task pianificato." : "Task aggiunto da pianificare."
     );
     emitTasksUpdated();
     setQuickTitle("");
@@ -322,7 +331,7 @@ export default function HomePage() {
     return (
       <>
         <Nav />
-        <main className="min-h-screen px-6 py-10">
+        <main className="min-h-screen px-6 py-10 app-page">
           <div className="app-shell max-w-5xl mx-auto p-6 sm:p-8">
             <p className="meta-line">Caricamento profilo...</p>
           </div>
@@ -334,7 +343,7 @@ export default function HomePage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-10">
+      <main className="min-h-screen px-6 py-10 app-page">
         {isAuthed && (
           <div className="text-center mb-8">
             <h2 className="page-title">{greeting}</h2>
@@ -497,15 +506,18 @@ export default function HomePage() {
                 </div>
 
                 <div className="glass-panel p-5">
-                  <SectionHeader title="Scadenze in arrivo" subtitle="Focus" />
+                  <SectionHeader
+                    title="Scadenze della settimana"
+                    subtitle="In arrivo"
+                  />
 
                   {upcoming.length === 0 ? (
                     <EmptyState
-                      title="Nessuna scadenza in arrivo"
+                      title="Nessuna scadenza questa settimana"
                       description="Programma un task con data per vederlo qui."
                     />
                   ) : (
-                    <ul className="mt-4 list-stack">
+                    <ul className="mt-4 list-stack week-deadlines-list">
                       {upcoming.map((task) => {
                         const meta = joinMeta([
                           task.due_date

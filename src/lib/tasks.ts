@@ -50,7 +50,7 @@ const STATUS_META: Record<
   TaskStatus,
   { label: string; emoji: string; tone: StatusTone }
 > = {
-  INBOX: { label: "Inbox", emoji: "📥", tone: "inbox" },
+  INBOX: { label: "Da pianificare", emoji: "📥", tone: "inbox" },
   OPEN: { label: "Pianificato", emoji: "🗓️", tone: "open" },
   DONE: { label: "Completato", emoji: "✅", tone: "done" },
 };
@@ -69,7 +69,7 @@ export const TYPE_OPTIONS = [
 
 export const STATUS_OPTIONS = [
   { value: "OPEN", label: "🗓️ Pianificato", tone: "open" },
-  { value: "INBOX", label: "📥 Inbox", tone: "inbox" },
+  { value: "INBOX", label: "📥 Da pianificare", tone: "inbox" },
   { value: "DONE", label: "✅ Completato", tone: "done" },
 ];
 

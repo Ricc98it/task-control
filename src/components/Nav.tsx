@@ -28,13 +28,6 @@ const flowBoard: FlowCard[] = [
     variant: "home",
   },
   {
-    href: "/week",
-    label: "🗓️ Pianifica",
-    hint: "Settimana",
-    desc: "Distribuisci i task sui giorni.",
-    key: "week",
-  },
-  {
     href: "/today",
     label: "☀️ Oggi",
     hint: "Focus",
@@ -42,8 +35,15 @@ const flowBoard: FlowCard[] = [
     key: "today",
   },
   {
+    href: "/week",
+    label: "🗓️ Pianifica",
+    hint: "Settimana",
+    desc: "Distribuisci i task sui giorni.",
+    key: "week",
+  },
+  {
     href: "/all",
-    label: "🔎 Rivedi",
+    label: "📋 Task",
     hint: "Task",
     desc: "Controlla tutto il carico.",
     key: "overdue",

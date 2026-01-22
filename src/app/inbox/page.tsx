@@ -150,7 +150,7 @@ export default function InboxPage() {
     }
 
     setToast(
-      normalizedWorkDays ? "Task pianificato." : "Task aggiunto in Inbox."
+      normalizedWorkDays ? "Task pianificato." : "Task aggiunto da pianificare."
     );
     if (data && data.status === "INBOX") {
       setTasks((prev) => [normalizeTask(data), ...prev]);
@@ -245,7 +245,7 @@ export default function InboxPage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-10">
+      <main className="min-h-screen px-6 py-10 app-page">
         <div className="app-shell max-w-5xl mx-auto p-6 sm:p-8">
           <PageHeader
             title="Cattura"
@@ -399,14 +399,14 @@ export default function InboxPage() {
 
           <section className="mt-8">
             <SectionHeader
-              title="Inbox da pianificare"
+              title="Task da pianificare"
               subtitle="Seleziona il giorno di lavoro per spostarli in Pianificati."
             />
             {loading ? (
               <SkeletonList rows={3} />
             ) : tasks.length === 0 ? (
               <EmptyState
-                title="Nessun task in Inbox"
+                title="Nessun task da pianificare"
                 description="Quando aggiungi un task senza data lo troverai qui."
               />
             ) : (

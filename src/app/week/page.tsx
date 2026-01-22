@@ -269,8 +269,8 @@ export default function WeekPage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-10">
-        <div className="app-shell max-w-6xl mx-auto p-6 sm:p-8">
+      <main className="min-h-screen px-6 py-10 app-page">
+        <div className="app-shell week-shell max-w-6xl mx-auto p-6 sm:p-8">
           <PageHeader
             title="Settimana"
             subtitle={weekLabel}

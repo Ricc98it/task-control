@@ -243,7 +243,7 @@ export default function TaskDetailPage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-10">
+      <main className="min-h-screen px-6 py-10 app-page">
         <div className="app-shell max-w-5xl mx-auto p-6 sm:p-8">
           <PageHeader
             title="Dettagli task"
@@ -426,7 +426,7 @@ export default function TaskDetailPage() {
                   disabled={saving}
                   icon={<Icon name="inbox" />}
                 >
-                  Metti in inbox
+                  Metti da pianificare
                 </Button>
               </div>
             </div>
