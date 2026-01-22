@@ -15,19 +15,9 @@ import {
   formatDisplayDate,
   getPriorityMeta,
   joinMeta,
-  type TaskPriority,
+  normalizeTasks,
+  type Task,
 } from "@/lib/tasks";
-
-type Task = {
-  id: string;
-  title: string;
-  type: "WORK" | "PERSONAL";
-  due_date: string | null;
-  work_days: string[] | null;
-  status: "OPEN" | "DONE";
-  priority: TaskPriority | null;
-  project: { id: string; name: string } | null;
-};
 
 function todayISO(): string {
   // YYYY-MM-DD in locale
@@ -62,7 +52,7 @@ export default function TodayPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "id,title,type,due_date,work_days,status,priority,project:projects(id,name)"
+          "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name)"
         )
         .eq("status", "OPEN")
         .contains("work_days", [today])
@@ -72,7 +62,7 @@ export default function TodayPage() {
       if (error) {
         console.error(error);
       } else {
-        setTasks((data ?? []) as Task[]);
+        setTasks(normalizeTasks(data ?? []));
       }
       setLoading(false);
     }
