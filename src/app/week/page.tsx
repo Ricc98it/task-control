@@ -315,12 +315,14 @@ export default function WeekPage() {
               const columnTasks = getTasksFor(target);
               const deadlineTasks = deadlinesByDay.get(target.date) ?? [];
               const isToday = target.date === today;
+              const isPast = target.date < today;
               return (
                 <div
                   key={target.id}
                   className={
                     "glass-panel week-column " +
                     (isToday ? "week-column-today " : "") +
+                    (isPast ? "week-column-past " : "") +
                     (hoverTarget === target.id ? "week-column-hover" : "")
                   }
                   onDragOver={(e) => {

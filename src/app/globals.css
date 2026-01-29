@@ -1430,6 +1430,7 @@ select.glass-input {
   gap: 14px;
   flex: 1 1 auto;
   min-height: 0;
+  width: 100%;
 }
 
 .week-column {
@@ -1438,6 +1439,7 @@ select.glass-input {
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  min-width: 0;
   height: 100%;
   background: linear-gradient(
     180deg,
@@ -1457,6 +1459,46 @@ select.glass-input {
 .week-column-hover {
   border-color: rgba(10, 132, 255, 0.6);
   background: rgba(10, 132, 255, 0.12);
+}
+
+.week-column-past {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.35),
+    rgba(15, 23, 42, 0.22)
+  );
+  border-color: rgba(148, 163, 184, 0.08);
+}
+
+.week-column-past .week-column-label {
+  color: rgba(148, 163, 184, 0.5);
+}
+
+.week-column-past .week-column-date {
+  color: rgba(226, 232, 240, 0.5);
+  background: rgba(30, 41, 59, 0.35);
+  border-color: rgba(148, 163, 184, 0.12);
+}
+
+.week-column-past .week-column-state {
+  color: rgba(148, 163, 184, 0.5);
+}
+
+.week-column-past .week-task {
+  opacity: 0.55;
+}
+
+.week-column-past .week-task-title {
+  color: rgba(226, 232, 240, 0.65);
+}
+
+.week-column-past .week-task-meta .meta-line,
+.week-column-past .week-task-meta .meta-project {
+  color: rgba(148, 163, 184, 0.55);
+}
+
+.week-column-past .deadline-chip {
+  opacity: 0.55;
 }
 
 .week-column-header {

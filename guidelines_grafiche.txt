@@ -1,0 +1,363 @@
+GUIDELINES GRAFICHE - Task Control
+Versione: estratta dal codice (src/app/globals.css + componenti React)
+Lingua UI: italiano
+
+1) DIREZIONE VISIVA GENERALE
+- Tema dark con glassmorphism: superfici semi-trasparenti, blur e bordi sottili.
+- Palette fredda (blu/grigio ardesia) con accenti neon blu e verde.
+- Contrasto alto: testo quasi bianco su sfondo blu notte.
+- Motion morbida: hover con micro-traslazioni (-1px) e fade-up.
+- UI compatta, elegante, con dettagli "premium" (ombre profonde e highlight).
+
+2) FONT E TIPOGRAFIA
+- Font principale: Geist Sans (Next/font, variabile CSS --font-geist-sans).
+- Font mono: Geist Mono (variabile CSS --font-geist-mono).
+- Stack fallback: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif.
+- Body: usa className "antialiased".
+- Dimensioni chiave:
+  - page-title: 30px, font-weight 600, letter-spacing -0.01em, line-height 1.2
+  - section-title: 17px, font-weight 600, line-height 1.25
+  - page-subtitle: 13px, muted
+  - meta-line: 12px, muted
+  - select-value-text: 13px, font-weight 600
+  - select-option-label: 13px, font-weight 600
+  - select-option-desc: 11px
+  - badge/pill: 11px, font-weight 600
+  - date-weekday: 10px, uppercase, letter-spacing 0.12em
+  - flow-card-hint: 10px, uppercase, letter-spacing 0.16em
+- Tipografia UI: poche gerarchie, font-weight 600 su titoli e label, testo normale 12-14px.
+
+3) PALETTE E TOKENS (globals.css :root)
+- --bg: #0a0f1a
+- --surface: rgba(15, 23, 42, 0.78)
+- --surface-soft: rgba(15, 23, 42, 0.5)
+- --surface-strong: rgba(10, 15, 26, 0.92)
+- --border: rgba(148, 163, 184, 0.18)
+- --border-strong: rgba(148, 163, 184, 0.32)
+- --muted: rgba(148, 163, 184, 0.75)
+- --ink: #f1f5f9
+- --accent: #0a84ff
+- --accent-soft: rgba(10, 132, 255, 0.18)
+- --accent-green: #34c759
+- --priority-p0: #ff453a
+- --priority-p1: #ff9f0a
+- --priority-p2: #0a84ff
+- --priority-p3: #34c759
+- --type-work: #0a84ff
+- --type-personal: #34c759
+- --status-inbox: #ffd60a
+- --status-open: #0a84ff
+- --status-done: #34c759
+- --shadow-1: 0 8px 20px rgba(2, 6, 23, 0.35)
+- --shadow-2: 0 22px 48px rgba(2, 6, 23, 0.45)
+- --radius-sm: 10px
+- --radius-md: 14px
+- --radius-lg: 18px
+- --radius-xl: 24px
+- --space-1: 6px
+- --space-2: 10px
+- --space-3: 14px
+- --space-4: 18px
+- --space-5: 24px
+- --space-6: 32px
+
+4) SFONDO GENERALE
+- Body background:
+  - radial-gradient(circle at 12% -10%, rgba(10,132,255,0.2), transparent 45%)
+  - radial-gradient(circle at 85% -5%, rgba(52,199,89,0.18), transparent 50%)
+  - linear-gradient(180deg, #0b1220 0, #070b13 100%)
+- Colore testo globale: var(--ink)
+- Font: var(--font-sans)
+
+5) LAYOUT BASE E CONTENITORI
+- Struttura pagina:
+  - .page-stack: flex column, height 100dvh
+  - .app-page: flex column, min-height 0
+  - .app-page .app-shell: flex 1, overflow-y auto
+- .app-shell (container principale):
+  - background: var(--surface)
+  - border: 1px solid var(--border)
+  - border-radius: var(--radius-xl)
+  - backdrop-filter: blur(18px) saturate(140%)
+  - box-shadow: var(--shadow-2)
+- .glass-panel (contenitori secondari):
+  - background: var(--surface-soft)
+  - border: 1px solid var(--border)
+  - border-radius: var(--radius-lg)
+  - box-shadow: var(--shadow-1)
+- .form-section:
+  - background: rgba(15,23,42,0.45)
+  - border: 1px solid var(--border)
+  - border-radius: var(--radius-lg)
+  - padding: 16px
+- Spaziature ricorrenti (Tailwind):
+  - px-6 = 24px, py-10 = 40px
+  - p-6 = 24px, p-8 = 32px, p-5 = 20px, p-4 = 16px
+  - gap-2 = 8px, gap-3 = 12px, gap-4 = 16px, gap-6 = 24px
+- Larghezze container:
+  - max-w-sm = 384px (login)
+  - max-w-xl = 576px (welcome)
+  - max-w-5xl = 1024px (pagine standard)
+  - max-w-6xl = 1152px (week view)
+
+6) BORDI, RADIUS, OMBRE
+- Bordi sempre sottili (1px) con colori semi-trasparenti.
+- Radius diffuso: 10/14/18/24px, pill 999px.
+- Ombre:
+  - Shadow 1 per card secondarie (0 8px 20px rgba(2,6,23,0.35))
+  - Shadow 2 per shell principale (0 22px 48px rgba(2,6,23,0.45))
+- Hover spesso con "transform: translateY(-1px)" e leggera variazione background/border.
+
+7) TIPI DI CARD E LISTE
+- .glass-card:
+  - background: rgba(15,23,42,0.42)
+  - border: 1px solid var(--border)
+  - hover: border-color var(--border-strong), background rgba(15,23,42,0.55)
+- .list-row:
+  - display: flex, align-items center, justify-between
+  - padding: 12px 14px
+  - border-radius: var(--radius-lg)
+  - border: 1px solid var(--border)
+  - background: rgba(15,23,42,0.4)
+  - hover: border-strong, background rgba(15,23,42,0.55), translateY(-1px)
+- Varianti:
+  - .list-row-lg: padding 16px 18px
+  - .list-row-start: align-items flex-start
+  - .list-row-stack: column, align-items flex-start
+- Priority cards (gradient per priorita):
+  - P0: border rgba(255,69,58,0.65), bg linear 135deg rgba(255,69,58,0.32 -> 0.18)
+  - P1: border rgba(255,159,10,0.65), bg linear 135deg rgba(255,159,10,0.32 -> 0.18)
+  - P2: border rgba(10,132,255,0.65), bg linear 135deg rgba(10,132,255,0.30 -> 0.16)
+  - P3: border rgba(52,199,89,0.65), bg linear 135deg rgba(52,199,89,0.30 -> 0.16)
+  - Hover aumenta border e intensita gradient.
+
+8) BOTTONI
+- Base: inline-flex, gap 8px, radius var(--radius-sm), text-decoration none.
+- .btn-primary:
+  - background: var(--accent) (#0a84ff)
+  - border: 1px solid rgba(10,132,255,0.5)
+  - color: #fff
+  - shadow: 0 10px 24px rgba(10,132,255,0.28)
+  - hover: background #1c90ff, border stronger, translateY(-1px)
+  - active: shadow ridotta 0 6px 16px
+- .btn-secondary:
+  - background: rgba(255,255,255,0.06)
+  - border: 1px solid var(--border)
+  - hover: background rgba(255,255,255,0.12), border-strong, translateY(-1px)
+- .btn-tertiary:
+  - background: transparent, color var(--muted)
+  - hover: color var(--ink), background rgba(148,163,184,0.12)
+  - active: background rgba(148,163,184,0.18)
+- Dimensioni (component Button):
+  - sm: px-3 py-1.5, text-sm (14px)
+  - md: px-4 py-2, text-sm
+
+9) INPUT, FORM E FOCUS
+- .glass-input:
+  - background: rgba(15,23,42,0.65)
+  - border: 1px solid var(--border)
+  - color: #e2e8f0
+  - radius var(--radius-md)
+  - focus: border rgba(10,132,255,0.8), bg rgba(15,23,42,0.85)
+  - focus shadow: inset 0 1px 0 rgba(255,255,255,0.06) + 0 0 0 3px rgba(10,132,255,0.22)
+  - placeholder: rgba(148,163,184,0.7)
+  - disabled: opacity 0.65, bg rgba(15,23,42,0.6)
+- Label:
+  - .field-label: 12px, font-weight 600, letter-spacing 0.02em
+  - .field-hint: 11px, muted
+- Varianti "field-soft":
+  - input e select piu soft, background 0.45, border piu leggero
+- Focus generico su a/button/input/select/textarea:
+  - outline 2px solid rgba(10,132,255,0.6), offset 2px
+
+10) SELECT CUSTOM
+- Struttura:
+  - .select-shell (wrapper)
+  - .select-button (trigger)
+  - .select-menu (dropdown)
+  - .select-option (item)
+  - .select-dot (indicator)
+- Trigger:
+  - background rgba(15,23,42,0.65), border var(--border)
+  - hover: border-strong, background 0.75
+  - open: border rgba(10,132,255,0.6) + box-shadow 0 0 0 3px rgba(10,132,255,0.18)
+  - size sm: padding 6px 10px, font-size 12px
+- Menu:
+  - background rgba(15,23,42,0.96), border rgba(148,163,184,0.2)
+  - radius var(--radius-lg), shadow 0 18px 40px rgba(0,0,0,0.45)
+  - gap 6px, padding 8px (sm: 6px)
+- Option:
+  - default background transparent
+  - data-active: background rgba(148,163,184,0.12), border rgba(148,163,184,0.2)
+  - data-selected: background rgba(10,132,255,0.18), border rgba(10,132,255,0.4)
+- Tone classes:
+  - select-tone-p0/p1/p2/p3, select-tone-work/personal, select-tone-inbox/open/done
+  - select-dot color: priority/type/status map ai token --priority-*, --type-*, --status-*
+
+11) DATE PICKER
+- Input:
+  - .date-input usa icona calendar inline in background-image (SVG)
+  - background: linear-gradient(180deg, rgba(30,41,59,0.92), rgba(15,23,42,0.98))
+  - padding-right ~2.75rem per spazio icona
+  - size sm: padding-right 2.2rem, icona 12px
+- Overlay:
+  - .date-overlay: fixed inset 0, bg rgba(2,6,23,0.55), blur 6px
+  - animazione: fade-up 0.2s
+- Popover:
+  - bg rgba(15,23,42,0.95), border rgba(148,163,184,0.2)
+  - radius var(--radius-lg), shadow 0 18px 40px rgba(0,0,0,0.45)
+  - padding 14px (sm 12px)
+- Header:
+  - .date-title: 13px, font-weight 600
+  - .date-nav: button con border rgba(148,163,184,0.2), bg rgba(30,41,59,0.7)
+  - hover nav: border rgba(10,132,255,0.55), bg rgba(10,132,255,0.2)
+- Day grid:
+  - .date-day: bg rgba(30,41,59,0.6), radius var(--radius-sm), font-size 12px
+  - hover: border rgba(10,132,255,0.6), bg rgba(10,132,255,0.2), translateY(-1px)
+  - outside month: color rgba(148,163,184,0.5), bg rgba(15,23,42,0.5)
+  - selected: border rgba(10,132,255,0.8), bg rgba(10,132,255,0.35)
+  - today: inset ring rgba(52,199,89,0.7)
+- Actions:
+  - .date-action: pill, border rgba(148,163,184,0.2), bg rgba(30,41,59,0.7)
+  - hover: border rgba(10,132,255,0.5), bg rgba(10,132,255,0.2)
+
+12) BADGE, PILL E STATUS
+- .badge-pill: inline, radius 999px, border var(--border), bg rgba(255,255,255,0.08)
+- .priority-pill:
+  - P0: bg rgba(255,69,58,0.2), border rgba(255,69,58,0.5), text #fee2e2
+  - P1: bg rgba(255,159,10,0.2), border rgba(255,159,10,0.5), text #ffedd5
+  - P2: bg rgba(10,132,255,0.18), border rgba(10,132,255,0.45), text #dbeafe
+  - P3: bg rgba(52,199,89,0.18), border rgba(52,199,89,0.45), text #dcfce7
+- .type-pill:
+  - work: bg rgba(10,132,255,0.16), border rgba(10,132,255,0.4), text #dbeafe
+  - personal: bg rgba(52,199,89,0.16), border rgba(52,199,89,0.4), text #dcfce7
+- .status-pill:
+  - inbox: bg rgba(255,214,10,0.2), border rgba(255,214,10,0.5), text #fef3c7
+  - open: bg rgba(10,132,255,0.16), border rgba(10,132,255,0.4), text #dbeafe
+  - done: bg rgba(52,199,89,0.16), border rgba(52,199,89,0.4), text #dcfce7
+- .pill (generico):
+  - bg rgba(15,23,42,0.6), border var(--border), text var(--ink)
+- .pill-accent:
+  - border rgba(10,132,255,0.5), bg rgba(10,132,255,0.16), text #dbeafe
+
+13) NAVIGAZIONE
+- Nav sticky top: "sticky top-0 z-20"
+- .nav-shell:
+  - padding 16px 24px (mobile 12px 16px 16px)
+  - background rgba(8,12,22,0.92), blur 16px, saturate 140%
+  - shadow 0 10px 30px rgba(2,6,23,0.35)
+- .nav-board:
+  - grid: minmax(30px,0.35fr) repeat(4,1fr) minmax(30px,0.35fr)
+  - max-width 1024px, gap 12px
+  - responsive: 2 colonne sotto 900px, 1 colonna sotto 640px
+- Flow cards (nav principale):
+  - .flow-card: radius 18px, border var(--border), bg rgba(15,23,42,0.55)
+  - hover: bg 0.68, shadow 0 12px 28px rgba(2,6,23,0.4), translateY(-2px)
+  - active: border rgba(10,132,255,0.6), bg rgba(10,132,255,0.14),
+    inset ring 1px rgba(10,132,255,0.2)
+  - home card: ridotta, usa emoji icon (descritta sotto, no icona SVG)
+- Alert state (overdue):
+  - border-rose-400/40, text-rose-200 (Tailwind)
+
+14) HEADER E TITOLI
+- .page-header:
+  - display flex, align-items flex-end, space-between
+  - border-bottom 1px solid var(--border), padding-bottom 16px
+  - wrap su schermi piccoli
+- .page-title: 30px, weight 600, letter-spacing -0.01
+- .page-subtitle: 13px, muted, margin-top 6px
+- .section-header: flex, justify-between, gap 12px, wrap
+- .section-subtitle: 12px, muted
+
+15) STATO, FEEDBACK E EMPTY
+- Error box ricorrente:
+  - text-red-200, border-red-500/30, bg-red-500/10, radius 12-16px
+- Success box (login):
+  - text-emerald-200, border-emerald-400/30, bg-emerald-400/10
+- .empty-state:
+  - border: 1px dashed rgba(148,163,184,0.35)
+  - radius var(--radius-lg), padding 18px
+  - testo centrato, muted
+- .toast:
+  - pill 999px, font-size 12px
+  - bg rgba(52,199,89,0.12), border rgba(52,199,89,0.35)
+  - animazione fade-up 0.2s
+- .skeleton:
+  - background rgba(15,23,42,0.55)
+  - shimmer animazione 1.2s infinite
+
+16) PAGE SPECIFICHE
+- Login:
+  - card max-w-sm, center, titolo + subtitle
+  - input glass, CTA primaria full width
+- Welcome:
+  - card max-w-xl, text-center
+  - input "name-input": 30px, border-bottom solo, focus accent
+- Home:
+  - greeting centrato con page-title
+  - layout 2 colonne (1.4fr / 1fr) su desktop
+  - "capture" form: glass-panel con reveal animato
+  - box scadenze: list-stack con pill priorita
+- Inbox:
+  - sezione capture con reveal + field-soft su select
+  - lista task con datepicker inline per pianificare
+- Today:
+  - griglia 2 colonne su desktop, 1 su mobile
+  - card per "Lavoro" e "Personale" con list-row priority tint
+- Week:
+  - board a colonne (5 giorni), scroll interno su liste
+  - column header con label (uppercase) + pill date
+  - chip scadenze draggable: border rosso, bg rosso soft, cursor grab
+- All / Done:
+  - filtri in glass-panel
+  - list-row con badge priorita/tipo e datepicker inline
+- Projects:
+  - form crea progetto in glass-panel, lista con azioni "Rinomina" e "Elimina"
+
+17) MOTION E ANIMAZIONI
+- fade-up: 0.7s ease-out (generic), 0.2s (overlay/toast)
+- shimmer: 1.2s infinite per skeleton
+- float-slow: 12s ease-in-out (utilizzo generico, non critico)
+- reveal: .capture-reveal con max-height, opacity, transform, visibility
+
+18) ICONOGRAFIA
+- Icon component (SVG lineare):
+  - stroke: currentColor
+  - strokeWidth: 1.6
+  - strokeLinecap/Linejoin: round
+  - size default: 18px (override)
+- Nelle label sono usate emoji al posto di icone grafiche:
+  - navigation labels: home, sun, calendar, list, folder
+  - priority: fire, lightning, sparkles, leaf
+  - type: briefcase, house
+  - status: inbox, calendar, check
+  - action: hourglass (loading), door (logout), pencil, trash
+  Nota: qui sono descritte a parole per mantenere ASCII.
+
+19) RESPONSIVE
+- Breakpoint principali:
+  - >= 1024px: grid 2 colonne (today-grid), week-board 5 colonne
+  - <= 1023px: week-board auto-fit min 220px
+  - <= 900px: nav-board passa a 2 colonne, padding ridotto
+  - <= 640px: nav-board 1 colonna
+- Mobile: spacing ridotte, layout a colonna unica, app-shell full width.
+
+20) MICRO-DETAILS DA RISPETTARE
+- Links principali:
+  - .link-primary: color var(--ink), font-weight 600, underline hover
+  - .stretched-link: overlay full area per click
+- Cursor:
+  - buttons: pointer
+  - disabled: not-allowed + opacity
+  - deadline-chip: grab/grabbing
+- Color scheme:
+  - input select impostano "color-scheme: dark"
+- Tipologia copy:
+  - frasi brevi, titoli in italiano, tono operativo e pratico
+  - molte label con emoji prima del testo (vedi sopra)
+
+Se vuoi replicare lo stile in un altro progetto:
+1) Porta i token CSS e le classi base (app-shell, glass-panel, glass-input).
+2) Replica la palette e le trasparenze.
+3) Applica stessa tipografia (Geist) e stessa scala di font (30/17/13/12/11).
+4) Mantieni hover/active con micro-traslazioni e glow blu.
