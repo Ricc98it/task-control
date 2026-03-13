@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import DatePicker from "@/components/DatePicker";
@@ -176,7 +175,7 @@ export default function InboxPage() {
     setProjectSaving(true);
     const { data, error } = await supabase
       .from("projects")
-      .insert({ name: trimmed })
+      .insert({ name: trimmed, type })
       .select("id,name")
       .single();
     setProjectSaving(false);
@@ -236,7 +235,7 @@ export default function InboxPage() {
       { value: NEW_PROJECT_VALUE, label: "➕ Nuovo progetto" },
       ...projects.map((project) => ({
         value: project.id,
-        label: project.name,
+        label: project.name.toUpperCase(),
       })),
     ],
     [projects]
@@ -423,12 +422,7 @@ export default function InboxPage() {
                     <ListRow key={task.id} className="list-row-lg list-row-start">
                       <div className="flex items-start justify-between gap-3 w-full">
                         <div className="min-w-0">
-                          <Link
-                            href={`/task/${task.id}`}
-                            className="link-primary stretched-link"
-                          >
-                            {task.title}
-                          </Link>
+                          <p className="text-slate-100 font-semibold">{task.title}</p>
                           {meta ? <p className="meta-line mt-1">{meta}</p> : null}
                           <div className="mt-2 max-w-xs stretched-guard">
                             <DatePicker
@@ -453,7 +447,7 @@ export default function InboxPage() {
                           <span
                             className={`badge-pill priority-pill priority-${priorityMeta.tone} px-2 py-1`}
                           >
-                            {priorityMeta.emoji} {priorityMeta.label}
+                            {priorityMeta.label}
                           </span>
                           <span
                             className={`badge-pill type-pill ${

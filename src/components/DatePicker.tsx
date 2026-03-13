@@ -95,6 +95,8 @@ type DatePickerBaseProps = {
   inputClassName?: string;
   wrapperClassName?: string;
   ariaLabel?: string;
+  confirmLabel?: string;
+  onConfirm?: (value: string[]) => void;
 };
 
 type DatePickerSingleProps = DatePickerBaseProps & {
@@ -133,6 +135,8 @@ export default function DatePicker({
   inputClassName,
   wrapperClassName,
   ariaLabel,
+  confirmLabel = "Conferma",
+  onConfirm,
   mode = "single",
 }: DatePickerProps) {
   const isMulti = mode === "multiple";
@@ -153,16 +157,6 @@ export default function DatePicker({
   const popoverRef = useRef<HTMLDivElement>(null);
   const popoverId = useId();
   const todayISO = formatISO(new Date());
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    setViewDate(selectedDate ?? new Date());
-  }, [open, selectedKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -209,10 +203,25 @@ export default function DatePicker({
     if (disabled) return;
     if (isMulti) {
       (onChange as (value: string[]) => void)([]);
+      (onConfirm as ((value: string[]) => void) | undefined)?.([]);
     } else {
       (onChange as (value: string) => void)("");
     }
     setOpen(false);
+  }
+
+  function confirmSelection() {
+    if (disabled) return;
+    if (isMulti) {
+      (onConfirm as ((value: string[]) => void) | undefined)?.(sortedDates);
+    }
+    setOpen(false);
+  }
+
+  function openPicker() {
+    if (disabled) return;
+    setViewDate(selectedDate ?? new Date());
+    setOpen(true);
   }
 
   return (
@@ -229,19 +238,18 @@ export default function DatePicker({
         } ${inputClassName ?? ""}`.trim()}
         value={displayValue}
         placeholder={placeholder}
-        onFocus={() => !disabled && setOpen(true)}
-        onClick={() => !disabled && setOpen(true)}
+        onFocus={openPicker}
+        onClick={openPicker}
         readOnly
         disabled={disabled}
         required={required}
         aria-label={ariaLabel}
         aria-haspopup="dialog"
-        aria-expanded={open}
         aria-controls={popoverId}
       />
 
       {open && !disabled && (
-        mounted &&
+        typeof window !== "undefined" &&
         createPortal(
           <div className="date-overlay" onClick={() => setOpen(false)}>
             <div
@@ -314,10 +322,18 @@ export default function DatePicker({
                   type="button"
                   className="date-action"
                   onClick={clearDate}
-                  disabled={sortedDates.length === 0}
                 >
                   Pulisci
                 </button>
+                {isMulti ? (
+                  <button
+                    type="button"
+                    className="date-action"
+                    onClick={confirmSelection}
+                  >
+                    {confirmLabel}
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>,

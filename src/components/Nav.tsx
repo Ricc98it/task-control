@@ -2,19 +2,17 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import TaskWizardModal from "@/components/TaskWizardModal";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
-import { addDays, formatISODate, startOfWeek, todayISO } from "@/lib/tasks";
 import { onTasksUpdated } from "@/lib/taskEvents";
 
 type SessionState = "loading" | "authed" | "anon";
-type SummaryKey = "inbox" | "today" | "week" | "overdue" | "projects";
+type SummaryKey = "inbox" | "overdue" | "projects";
 type FlowCard = {
   href: string;
   label: string;
-  hint: string;
-  desc: string;
   key?: SummaryKey;
   variant?: "home";
 };
@@ -23,36 +21,16 @@ const flowBoard: FlowCard[] = [
   {
     href: "/",
     label: "🏠 Home",
-    hint: "Start",
-    desc: "Panoramica generale.",
     variant: "home",
   },
   {
-    href: "/today",
-    label: "☀️ Oggi",
-    hint: "Focus",
-    desc: "Seleziona cosa chiudere ora.",
-    key: "today",
-  },
-  {
-    href: "/week",
-    label: "🗓️ Pianifica",
-    hint: "Settimana",
-    desc: "Distribuisci i task sui giorni.",
-    key: "week",
-  },
-  {
     href: "/all",
-    label: "📋 Task",
-    hint: "Task",
-    desc: "Controlla tutto il carico.",
+    label: "Task",
     key: "overdue",
   },
   {
     href: "/projects",
-    label: "🗂️ Progetti",
-    hint: "Spazi",
-    desc: "Organizza i tuoi contenitori.",
+    label: "Progetti",
     key: "projects",
   },
 ];
@@ -61,12 +39,6 @@ function resolveActiveFlow(pathname: string | null) {
   if (!pathname) return null;
   if (pathname === "/") {
     return "/";
-  }
-  if (pathname.startsWith("/week")) {
-    return "/week";
-  }
-  if (pathname.startsWith("/today")) {
-    return "/today";
   }
   if (
     pathname.startsWith("/all") ||
@@ -87,10 +59,13 @@ export default function Nav() {
   const activeFlow = resolveActiveFlow(pathname);
   const [sessionState, setSessionState] = useState<SessionState>("loading");
   const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardKey, setWizardKey] = useState(0);
+  const [taskCreatedOverlayVisible, setTaskCreatedOverlayVisible] = useState(false);
+  const taskCreatedOverlayTimerRef = useRef<number | null>(null);
   const [summary, setSummary] = useState<{
     inbox: number;
-    today: number;
-    week: number;
     overdue: number;
     projects: number;
   } | null>(null);
@@ -120,28 +95,12 @@ export default function Nav() {
   }, [router]);
 
   const loadSummary = useCallback(async () => {
-    const weekStart = startOfWeek(new Date());
-    const weekDays = Array.from({ length: 7 }, (_, index) =>
-      formatISODate(addDays(weekStart, index))
-    );
-    const today = todayISO();
-
-    const [inboxRes, todayRes, weekRes, overdueRes, projectsRes] =
+    const [inboxRes, overdueRes, projectsRes] =
       await Promise.all([
       supabase
         .from("tasks")
         .select("id", { count: "exact", head: true })
         .eq("status", "INBOX"),
-      supabase
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "OPEN")
-        .contains("work_days", [today]),
-      supabase
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "OPEN")
-        .overlaps("work_days", weekDays),
       supabase
         .from("tasks")
         .select("id", { count: "exact", head: true })
@@ -153,18 +112,13 @@ export default function Nav() {
 
     return {
       inbox: inboxRes.count ?? 0,
-      today: todayRes.count ?? 0,
-      week: weekRes.count ?? 0,
       overdue: overdueRes.count ?? 0,
       projects: projectsRes.count ?? 0,
     };
   }, []);
 
   useEffect(() => {
-    if (sessionState !== "authed") {
-      setSummary(null);
-      return;
-    }
+    if (sessionState !== "authed") return;
 
     let active = true;
     loadSummary()
@@ -176,8 +130,6 @@ export default function Nav() {
         if (!active) return;
         setSummary({
           inbox: 0,
-          today: 0,
-          week: 0,
           overdue: 0,
           projects: 0,
         });
@@ -210,78 +162,178 @@ export default function Nav() {
     router.replace("/login");
   }
 
+  const showTaskCreatedOverlay = useCallback(() => {
+    setTaskCreatedOverlayVisible(true);
+    if (taskCreatedOverlayTimerRef.current !== null) {
+      window.clearTimeout(taskCreatedOverlayTimerRef.current);
+    }
+    taskCreatedOverlayTimerRef.current = window.setTimeout(() => {
+      setTaskCreatedOverlayVisible(false);
+      taskCreatedOverlayTimerRef.current = null;
+    }, 1500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (taskCreatedOverlayTimerRef.current !== null) {
+        window.clearTimeout(taskCreatedOverlayTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!logoutConfirmOpen) return;
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && !loggingOut) {
+        setLogoutConfirmOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [logoutConfirmOpen, loggingOut]);
+
   return (
-    <div className="sticky top-0 z-20">
-      <div className="nav-shell">
-        <nav className="nav-board">
-          {flowBoard.map((item) => {
-            const count = item.key ? summary?.[item.key] ?? 0 : 0;
-            const isAlert = item.key === "overdue" && count > 0;
-            const isActive = activeFlow === item.href;
-            if (item.variant === "home") {
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={isActive ? "page" : undefined}
-                  aria-label="Home"
-                  className={
-                    "flow-card flow-card-home " +
-                    (isActive ? "flow-card-active" : "")
-                  }
-                >
-                  <span className="flow-card-home-emoji">🏠</span>
-                </Link>
-              );
-            }
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={isActive ? "page" : undefined}
-                className={
-                  "flow-card " +
-                  (item.variant === "home" ? "flow-card-home " : "") +
-                  (isAlert ? "border-rose-400/40 " : "") +
-                  (isActive ? "flow-card-active" : "")
+    <>
+      <div className="sticky top-0 z-20">
+        <div className="nav-shell">
+          <div className="nav-layout">
+            <nav className="nav-board">
+              {flowBoard.map((item) => {
+                const count = item.key ? summary?.[item.key] ?? 0 : 0;
+                const isAlert = item.key === "overdue" && count > 0;
+                const isActive = activeFlow === item.href;
+                if (item.variant === "home") {
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      aria-current={isActive ? "page" : undefined}
+                      aria-label="Home"
+                      className={
+                        "flow-card flow-card-home " +
+                        (isActive ? "flow-card-active" : "")
+                      }
+                    >
+                      <span className="flow-card-home-emoji">🏠</span>
+                    </Link>
+                  );
                 }
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flow-card-label">{item.label}</span>
-                  <span className="flow-card-hint">{item.hint}</span>
-                </div>
-                {sessionState === "authed" && item.key ? (
-                  <span
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={isActive ? "page" : undefined}
                     className={
-                      "flow-card-count " + (isAlert ? "text-rose-200" : "")
+                      "flow-card flow-card-main " +
+                      (item.variant === "home" ? "flow-card-home " : "") +
+                      (isAlert ? "border-rose-400/40 " : "") +
+                      (isActive ? "flow-card-active" : "")
                     }
                   >
-                    {count}
-                  </span>
-                ) : (
-                  <span className="flow-card-desc">{item.desc}</span>
-                )}
-              </Link>
-            );
-          })}
-          {sessionState === "authed" && (
-            <div className="nav-logout">
+                    <span className="flow-card-section">{item.label}</span>
+                    <span
+                      className={
+                        "flow-card-metric " +
+                        (isAlert ? "text-rose-200" : "") +
+                        (sessionState === "authed" ? "" : " flow-card-metric-muted")
+                      }
+                    >
+                      {sessionState === "authed" && item.key ? count : "-"}
+                    </span>
+                  </Link>
+                );
+              })}
+              {sessionState === "authed" && (
+                <div className="nav-logout">
+                  <button
+                    type="button"
+                    className="flow-card flow-card-home nav-logout-button"
+                    onClick={() => setLogoutConfirmOpen(true)}
+                    disabled={loggingOut}
+                    aria-label="Logout"
+                    title="Logout"
+                  >
+                    <span className="flow-card-home-emoji">
+                      {loggingOut ? "⏳" : "🚪"}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </nav>
+            {sessionState === "authed" && (
+              <div className="nav-cta">
+                <button
+                  type="button"
+                  className="nav-add-button"
+                  onClick={() => {
+                    setWizardKey((prev) => prev + 1);
+                    setWizardOpen(true);
+                  }}
+                  aria-label="Aggiungi task"
+                  title="Aggiungi task"
+                >
+                  <span className="nav-add-plus">+</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <TaskWizardModal
+        key={wizardKey}
+        open={sessionState === "authed" && wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={showTaskCreatedOverlay}
+      />
+      {taskCreatedOverlayVisible ? (
+        <div className="task-created-overlay" role="status" aria-live="polite">
+          <p className="task-created-overlay-text">Task aggiunto</p>
+        </div>
+      ) : null}
+      {logoutConfirmOpen ? (
+        <div
+          className="app-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Conferma logout"
+          onClick={() => setLogoutConfirmOpen(false)}
+        >
+          <div
+            className="app-confirm-dialog logout-confirm-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="app-confirm-title logout-confirm-title">Confermi logout?</p>
+            <p className="app-confirm-body logout-confirm-body">
+              Uscirai dalla sessione corrente.
+            </p>
+            <div className="app-confirm-actions logout-confirm-actions">
               <button
                 type="button"
-                className="flow-card flow-card-home nav-logout-button"
-                onClick={handleLogout}
+                className="logout-confirm-btn"
+                onClick={() => setLogoutConfirmOpen(false)}
                 disabled={loggingOut}
-                aria-label="Logout"
-                title="Logout"
               >
-                <span className="flow-card-home-emoji">
-                  {loggingOut ? "⏳" : "🚪"}
-                </span>
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="logout-confirm-btn logout-confirm-btn-danger"
+                onClick={() => {
+                  setLogoutConfirmOpen(false);
+                  void handleLogout();
+                }}
+                disabled={loggingOut}
+              >
+                {loggingOut ? "Esco..." : "Logout"}
               </button>
             </div>
-          )}
-        </nav>
-      </div>
-    </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

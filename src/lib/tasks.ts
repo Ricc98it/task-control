@@ -8,6 +8,7 @@ export type StatusTone = "inbox" | "open" | "done";
 export type Project = {
   id: string;
   name: string;
+  type?: TaskType | null;
   color?: string | null;
 };
 
@@ -34,10 +35,10 @@ const PRIORITY_META: Record<
   TaskPriority,
   { label: string; emoji: string; tone: PriorityTone }
 > = {
-  P0: { label: "Critico", emoji: "🔥", tone: "p0" },
-  P1: { label: "Alto", emoji: "⚡", tone: "p1" },
-  P2: { label: "Medio", emoji: "✨", tone: "p2" },
-  P3: { label: "Basso", emoji: "🌿", tone: "p3" },
+  P0: { label: "Critico", emoji: "", tone: "p0" },
+  P1: { label: "Alto", emoji: "", tone: "p1" },
+  P2: { label: "Medio", emoji: "", tone: "p2" },
+  P3: { label: "Basso", emoji: "", tone: "p3" },
 };
 
 const TYPE_META: Record<TaskType, { label: string; emoji: string; tone: TypeTone }> =
@@ -56,10 +57,10 @@ const STATUS_META: Record<
 };
 
 export const PRIORITY_OPTIONS = [
-  { value: "P0", label: "🔥 Critico", tone: "p0" },
-  { value: "P1", label: "⚡ Alto", tone: "p1" },
-  { value: "P2", label: "✨ Medio", tone: "p2" },
-  { value: "P3", label: "🌿 Basso", tone: "p3" },
+  { value: "P0", label: "Critico", tone: "p0" },
+  { value: "P1", label: "Alto", tone: "p1" },
+  { value: "P2", label: "Medio", tone: "p2" },
+  { value: "P3", label: "Basso", tone: "p3" },
 ];
 
 export const TYPE_OPTIONS = [
@@ -87,7 +88,7 @@ export function getStatusMeta(status: TaskStatus) {
 
 export function formatPriorityLabel(priority?: TaskPriority | null): string {
   const meta = getPriorityMeta(priority);
-  return `${meta.emoji} ${meta.label}`;
+  return meta.label;
 }
 
 export function formatTypeLabel(type: TaskType): string {
@@ -104,6 +105,10 @@ export function formatStatusLabel(
   }
   const meta = getStatusMeta(status);
   return `${meta.emoji} ${meta.label}`;
+}
+
+export function formatProjectName(name?: string | null): string {
+  return (name ?? "").toUpperCase();
 }
 
 function formatDayWithMonth(date: Date) {
@@ -160,9 +165,12 @@ export function formatWorkDaysSummary(days: string[]): string {
 }
 
 export function normalizeTask(task: TaskRow): Task {
-  const project = Array.isArray(task.project)
+  const rawProject = Array.isArray(task.project)
     ? task.project[0] ?? null
     : task.project ?? null;
+  const project = rawProject
+    ? { ...rawProject, name: formatProjectName(rawProject.name) }
+    : null;
   const fallbackWorkDays = task.work_day ? [task.work_day] : null;
   const rawWorkDays =
     task.work_days && task.work_days.length > 0

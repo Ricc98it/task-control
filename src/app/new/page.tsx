@@ -40,14 +40,14 @@ export default function NewTaskPage() {
       { value: "", label: "🗂️ Nessun progetto" },
       ...projects.map((project) => ({
         value: project.id,
-        label: project.name,
+        label: project.name.toUpperCase(),
       })),
     ],
     [projects]
   );
   const statusOptions = useMemo(
     () => STATUS_OPTIONS.filter((option) => option.value !== "DONE"),
-    [STATUS_OPTIONS]
+    []
   );
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export default function NewTaskPage() {
     }
 
     emitTasksUpdated();
-    router.push("/today");
+    router.push("/");
   }
 
   return (

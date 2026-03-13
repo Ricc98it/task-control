@@ -2,43 +2,74 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Nav from "@/components/Nav";
-import DatePicker from "@/components/DatePicker";
-import Button from "@/components/Button";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+} from "react";
+import type { User } from "@supabase/supabase-js";
 import EmptyState from "@/components/EmptyState";
 import Icon from "@/components/Icon";
 import ListRow from "@/components/ListRow";
-import SectionHeader from "@/components/SectionHeader";
-import Select from "@/components/Select";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabaseClient";
+import Nav from "@/components/Nav";
+import SkeletonList from "@/components/SkeletonList";
+import TaskEditModal from "@/components/TaskEditModal";
 import { ensureSession } from "@/lib/autoSession";
 import { emitTasksUpdated, onTasksUpdated } from "@/lib/taskEvents";
+import { supabase } from "@/lib/supabaseClient";
 import {
   addDays,
   formatDisplayDate,
   formatISODate,
   getPriorityMeta,
-  joinMeta,
+  getTypeMeta,
   normalizeTasks,
-  PRIORITY_OPTIONS,
   startOfWeek,
   todayISO,
   type Project,
   type Task,
-  type TaskPriority,
-  type TaskType,
-  TYPE_OPTIONS,
 } from "@/lib/tasks";
 
 type SessionState = "loading" | "authed" | "anon";
+
 type Profile = {
   user_id: string;
   email: string;
   full_name: string;
 };
-const NEW_PROJECT_VALUE = "__new_project__";
+
+type DropTarget = { id: string; label: string; date: string };
+const DRAG_TYPE_TASK = "application/x-task-control-task";
+const DRAG_TYPE_DEADLINE = "application/x-task-control-deadline";
+const DEADLINE_PREFIX = "deadline:";
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parseDraggedTaskId(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const value = raw.trim();
+  if (!value) return null;
+
+  const stripped = value.startsWith(DEADLINE_PREFIX)
+    ? value.slice(DEADLINE_PREFIX.length)
+    : value;
+  if (UUID_REGEX.test(stripped)) return stripped;
+
+  const match = /\/task\/([0-9a-f-]{36})(?:$|[/?#])/i.exec(value);
+  if (!match?.[1]) return null;
+  return UUID_REGEX.test(match[1]) ? match[1] : null;
+}
+
+function priorityRank(priority: Task["priority"]): number {
+  if (priority === "P0") return 0;
+  if (priority === "P1") return 1;
+  if (priority === "P2") return 2;
+  if (priority === "P3") return 3;
+  return 4;
+}
 
 function formatNameFromEmail(email: string): string {
   const local = email.split("@")[0]?.trim();
@@ -74,22 +105,50 @@ export default function HomePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileChecked, setProfileChecked] = useState(false);
-  const [upcoming, setUpcoming] = useState<Task[]>([]);
+
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [deadlines, setDeadlines] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [quickTitle, setQuickTitle] = useState("");
-  const [quickType, setQuickType] = useState<TaskType>("WORK");
-  const [quickPriority, setQuickPriority] = useState<TaskPriority>("P2");
-  const [quickProject, setQuickProject] = useState<string>("");
-  const [quickProjectDraft, setQuickProjectDraft] = useState("");
-  const [quickProjectSaving, setQuickProjectSaving] = useState(false);
-  const [quickProjectErr, setQuickProjectErr] = useState<string | null>(null);
-  const [quickWorkDays, setQuickWorkDays] = useState<string[]>([]);
-  const [quickDueDate, setQuickDueDate] = useState<string>("");
-  const [quickErr, setQuickErr] = useState<string | null>(null);
-  const [quickSaving, setQuickSaving] = useState(false);
-  const [quickExpanded, setQuickExpanded] = useState(true);
-  const [quickToast, setQuickToast] = useState<string | null>(null);
-  const quickTitleRef = useRef<HTMLInputElement>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskActionTarget, setTaskActionTarget] = useState<Task | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [taskCompletedOverlayVisible, setTaskCompletedOverlayVisible] = useState(false);
+  const [loadingPlanning, setLoadingPlanning] = useState(true);
+  const [planningErr, setPlanningErr] = useState<string | null>(null);
+
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
+  const [hoverTarget, setHoverTarget] = useState<string | null>(null);
+  const dropHandledRef = useRef(false);
+  const draggingIdRef = useRef<string | null>(null);
+  const draggingFromRef = useRef<string | null>(null);
+  const taskCompletedOverlayTimerRef = useRef<number | null>(null);
+  const today = useMemo(() => todayISO(), []);
+
+  const days = useMemo<DropTarget[]>(() => {
+    const labels = ["Lun", "Mar", "Mer", "Gio", "Ven"];
+    return labels.map((label, index) => {
+      const date = addDays(weekStart, index);
+      return {
+        id: formatISODate(date),
+        label,
+        date: formatISODate(date),
+      };
+    });
+  }, [weekStart]);
+
+  const deadlinesByDay = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    deadlines.forEach((task) => {
+      const due = task.due_date ? task.due_date.slice(0, 10) : null;
+      if (!due) return;
+      const list = map.get(due) ?? [];
+      list.push(task);
+      map.set(due, list);
+    });
+    return map;
+  }, [deadlines]);
 
   useEffect(() => {
     let active = true;
@@ -108,7 +167,7 @@ export default function HomePage() {
         setSessionState("authed");
         setSessionUser(session.user ?? null);
         setUserName(resolveUserName(session.user ?? null));
-      } catch (e) {
+      } catch {
         if (!active) return;
         setSessionState("anon");
         setSessionUser(null);
@@ -135,8 +194,10 @@ export default function HomePage() {
           .select("user_id,full_name,email")
           .eq("user_id", sessionUser.id)
           .maybeSingle();
+
         if (!active) return;
         if (error) console.error(error);
+
         setProfile(
           data
             ? {
@@ -146,7 +207,7 @@ export default function HomePage() {
               }
             : null
         );
-      } catch (err) {
+      } catch {
         if (!active) return;
         setProfile(null);
       } finally {
@@ -163,142 +224,264 @@ export default function HomePage() {
     };
   }, [sessionState, sessionUser]);
 
-  const loadHomeData = useCallback(async () => {
-    const weekStart = startOfWeek(new Date());
-    const weekEndISO = formatISODate(addDays(weekStart, 6));
-    const today = todayISO();
+  const loadPlanningData = useCallback(async () => {
+    const weekStartISO = formatISODate(weekStart);
+    const weekEndISO = formatISODate(addDays(weekStart, 4));
 
-    const [upcomingRes, projectsRes] = await Promise.all([
+    const [plannedRes, deadlineRes, projectsRes] = await Promise.all([
       supabase
         .from("tasks")
         .select(
           "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name)"
         )
         .eq("status", "OPEN")
+        .overlaps(
+          "work_days",
+          Array.from({ length: 5 }, (_, index) =>
+            formatISODate(addDays(weekStart, index))
+          )
+        )
+        .order("work_days", { ascending: true })
+        .order("priority", { ascending: true, nullsFirst: false }),
+      supabase
+        .from("tasks")
+        .select(
+          "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name)"
+        )
+        .neq("status", "DONE")
         .not("due_date", "is", null)
-        .gte("due_date", today)
+        .gte("due_date", weekStartISO)
         .lte("due_date", weekEndISO)
-        .order("due_date", { ascending: true }),
-      supabase.from("projects").select("id,name").order("name"),
+        .order("due_date", { ascending: true })
+        .order("priority", { ascending: true, nullsFirst: false }),
+      supabase.from("projects").select("id,name,type").order("name"),
     ]);
 
-    setUpcoming(normalizeTasks(upcomingRes.data ?? []));
+    if (plannedRes.error || deadlineRes.error || projectsRes.error) {
+      const message =
+        plannedRes.error?.message ??
+        deadlineRes.error?.message ??
+        projectsRes.error?.message ??
+        "Errore nel caricamento della settimana.";
+      setPlanningErr(message);
+    } else {
+      setPlanningErr(null);
+    }
+
+    setTasks(normalizeTasks(plannedRes.data ?? []));
+    setDeadlines(normalizeTasks(deadlineRes.data ?? []));
     setProjects((projectsRes.data ?? []) as Project[]);
-  }, []);
+  }, [weekStart]);
 
   useEffect(() => {
     if (sessionState !== "authed") return;
-    let active = true;
 
-    loadHomeData().catch(() => {
-      if (!active) return;
-      setUpcoming([]);
-      setProjects([]);
-    });
+    let active = true;
+    setLoadingPlanning(true);
+
+    loadPlanningData()
+      .catch((error) => {
+        if (!active) return;
+        setPlanningErr(
+          error instanceof Error ? error.message : "Errore nel caricamento."
+        );
+        setTasks([]);
+        setDeadlines([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoadingPlanning(false);
+      });
 
     return () => {
       active = false;
     };
-  }, [loadHomeData, sessionState]);
+  }, [loadPlanningData, sessionState]);
+
+  const showTaskCompletedOverlay = useCallback(() => {
+    setTaskCompletedOverlayVisible(true);
+    if (taskCompletedOverlayTimerRef.current !== null) {
+      window.clearTimeout(taskCompletedOverlayTimerRef.current);
+    }
+    taskCompletedOverlayTimerRef.current = window.setTimeout(() => {
+      setTaskCompletedOverlayVisible(false);
+      taskCompletedOverlayTimerRef.current = null;
+    }, 1500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (taskCompletedOverlayTimerRef.current !== null) {
+        window.clearTimeout(taskCompletedOverlayTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!taskActionTarget) return;
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && !completingId) {
+        setTaskActionTarget(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [taskActionTarget, completingId]);
 
   useEffect(() => {
     if (sessionState !== "authed") return;
+
     return onTasksUpdated(() => {
-      loadHomeData().catch(() => {});
+      loadPlanningData().catch(() => {});
     });
-  }, [loadHomeData, sessionState]);
+  }, [loadPlanningData, sessionState]);
 
-  useEffect(() => {
-    if (!quickToast) return;
-    const timeout = setTimeout(() => setQuickToast(null), 2200);
-    return () => clearTimeout(timeout);
-  }, [quickToast]);
+  function getTasksFor(target: DropTarget) {
+    const date = target.date;
+    return tasks
+      .filter((task) => task.status === "OPEN" && task.work_days?.includes(date))
+      .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
+  }
 
-  async function createQuickTask(e: React.FormEvent) {
-    e.preventDefault();
-    setQuickErr(null);
+  async function moveTask(taskId: string, targetDate: string | null) {
+    setPlanningErr(null);
+    const currentTask = tasks.find((task) => task.id === taskId);
+    const nextDays =
+      targetDate === null
+        ? null
+        : Array.from(new Set([...(currentTask?.work_days ?? []), targetDate])).sort();
 
-    const trimmed = quickTitle.trim();
-    if (!trimmed) {
-      setQuickErr("Inserisci un titolo.");
-      quickTitleRef.current?.focus();
-      setQuickExpanded(true);
-      return;
+    const payload: Pick<Task, "status" | "work_days"> =
+      targetDate === null
+        ? { status: "INBOX", work_days: null }
+        : { status: "OPEN", work_days: nextDays };
+
+    setTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? { ...task, ...payload } : task))
+    );
+
+    const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
+    if (error) {
+      setPlanningErr(error.message);
+      await loadPlanningData().catch(() => {});
     }
+  }
 
-    setQuickSaving(true);
+  async function moveDeadline(taskId: string, targetDate: string) {
+    setPlanningErr(null);
+    const payload: Pick<Task, "due_date"> = { due_date: targetDate };
 
-    const normalizedWorkDays =
-      quickWorkDays.length > 0 ? Array.from(new Set(quickWorkDays)).sort() : null;
+    setDeadlines((prev) => {
+      const hasItem = prev.some((task) => task.id === taskId);
+      if (hasItem) {
+        return prev.map((task) =>
+          task.id === taskId ? { ...task, due_date: targetDate } : task
+        );
+      }
+      const source = tasks.find((task) => task.id === taskId);
+      if (!source) return prev;
+      return [...prev, { ...source, due_date: targetDate }];
+    });
 
-    const payload: Record<string, unknown> = {
-      title: trimmed,
-      type: quickType,
-      priority: quickPriority,
-      status: normalizedWorkDays ? "OPEN" : "INBOX",
-      work_days: normalizedWorkDays,
-      project_id:
-        quickProject && quickProject !== NEW_PROJECT_VALUE
-          ? quickProject
-          : null,
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId ? { ...task, due_date: targetDate } : task
+      )
+    );
+
+    const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
+    if (error) {
+      setPlanningErr(error.message);
+      await loadPlanningData().catch(() => {});
+    }
+  }
+
+  async function removeDayFromTask(taskId: string, day: string) {
+    setPlanningErr(null);
+    const currentTask = tasks.find((task) => task.id === taskId);
+    if (!currentTask?.work_days) return;
+
+    const nextDays = currentTask.work_days.filter((value) => value !== day);
+    const payload: Pick<Task, "status" | "work_days"> = {
+      status: currentTask.status,
+      work_days: nextDays.length > 0 ? nextDays : null,
     };
 
-    if (quickDueDate) payload.due_date = quickDueDate;
+    setTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? { ...task, ...payload } : task))
+    );
 
-    const { error } = await supabase.from("tasks").insert(payload);
+    const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
+    if (error) {
+      setPlanningErr(error.message);
+      await loadPlanningData().catch(() => {});
+    }
+  }
 
-    setQuickSaving(false);
+  async function completeTaskFromWeek(task: Task) {
+    if (completingId) return;
+    setPlanningErr(null);
+    setCompletingId(task.id);
+    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
+    setCompletingId(null);
 
     if (error) {
-      setQuickErr(error.message);
+      setPlanningErr(error.message);
       return;
     }
 
-    setQuickToast(
-      normalizedWorkDays ? "Task pianificato." : "Task aggiunto da pianificare."
-    );
+    setTasks((prev) => prev.filter((item) => item.id !== task.id));
+    setDeadlines((prev) => prev.filter((item) => item.id !== task.id));
+    setTaskActionTarget(null);
     emitTasksUpdated();
-    setQuickTitle("");
-    setQuickWorkDays([]);
-    setQuickDueDate("");
-    setQuickProject("");
-    setQuickPriority("P2");
-    quickTitleRef.current?.focus();
+    showTaskCompletedOverlay();
   }
 
-  async function createQuickProject() {
-    setQuickProjectErr(null);
-    const trimmed = quickProjectDraft.trim();
-    if (!trimmed) {
-      setQuickProjectErr("Inserisci un nome progetto.");
+  function handleDrop(event: DragEvent<HTMLDivElement>, targetDate: string | null) {
+    event.preventDefault();
+    const deadlineData = event.dataTransfer.getData(DRAG_TYPE_DEADLINE);
+    const taskData = event.dataTransfer.getData(DRAG_TYPE_TASK);
+    const plainData = event.dataTransfer.getData("text/plain");
+    const inferDeadlineFromUrl =
+      !taskData &&
+      !draggingId &&
+      !draggingIdRef.current &&
+      /^https?:\/\/.+\/task\/[0-9a-f-]{36}(?:$|[/?#])/i.test(plainData);
+
+    const deadlineId =
+      parseDraggedTaskId(deadlineData) ??
+      parseDraggedTaskId(
+        plainData.startsWith(DEADLINE_PREFIX) ? plainData : null
+      ) ??
+      (inferDeadlineFromUrl ? parseDraggedTaskId(plainData) : null);
+
+    if (deadlineId && targetDate) {
+      dropHandledRef.current = true;
+      void moveDeadline(deadlineId, targetDate);
+      setDraggingId(null);
+      draggingIdRef.current = null;
+      setDraggingFrom(null);
+      draggingFromRef.current = null;
+      setHoverTarget(null);
       return;
     }
 
-    setQuickProjectSaving(true);
-    const { data, error } = await supabase
-      .from("projects")
-      .insert({ name: trimmed })
-      .select("id,name")
-      .single();
-    setQuickProjectSaving(false);
-
-    if (error || !data) {
-      setQuickProjectErr(error?.message ?? "Errore nel salvataggio.");
-      return;
-    }
-
-    setProjects((prev) =>
-      [...prev, data as Project].sort((a, b) => a.name.localeCompare(b.name))
+    const taskId = parseDraggedTaskId(
+      draggingId ?? draggingIdRef.current ?? taskData ?? plainData
     );
-    setQuickProject(data.id);
-    setQuickProjectDraft("");
-    setQuickProjectErr(null);
-    router.refresh();
-  }
+    if (!taskId) return;
 
-  function handleQuickProjectChange(next: string) {
-    setQuickProjectErr(null);
-    setQuickProject(next);
+    dropHandledRef.current = true;
+    void moveTask(taskId, targetDate);
+    setDraggingId(null);
+    draggingIdRef.current = null;
+    setDraggingFrom(null);
+    draggingFromRef.current = null;
+    setHoverTarget(null);
   }
 
   const isAuthed = sessionState === "authed";
@@ -306,17 +489,6 @@ export default function HomePage() {
     isAuthed && profileChecked && !profileLoading && !profile?.full_name;
   const greetingName = profile?.full_name ?? userName;
   const greeting = greetingName ? `Ciao ${greetingName}!` : "Ciao!";
-  const projectOptions = useMemo(
-    () => [
-      { value: "", label: "🗂️ Nessun progetto" },
-      { value: NEW_PROJECT_VALUE, label: "➕ Nuovo progetto" },
-      ...projects.map((project) => ({
-        value: project.id,
-        label: project.name,
-      })),
-    ],
-    [projects]
-  );
 
   useEffect(() => {
     if (!shouldOnboard) return;
@@ -332,7 +504,7 @@ export default function HomePage() {
       <>
         <Nav />
         <main className="min-h-screen px-6 py-10 app-page">
-          <div className="app-shell max-w-5xl mx-auto p-6 sm:p-8">
+          <div className="app-shell home-shell p-6 sm:p-8">
             <p className="meta-line">Caricamento profilo...</p>
           </div>
         </main>
@@ -343,215 +515,224 @@ export default function HomePage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-10 app-page">
-        {isAuthed && (
-          <div className="text-center mb-8">
-            <h2 className="page-title">{greeting}</h2>
-          </div>
-        )}
-        <div className="app-shell max-w-5xl mx-auto">
+      <main className="min-h-screen px-2 sm:px-3 lg:px-4 py-6 app-page">
+        <div className="app-shell home-shell p-2 sm:p-3">
           {isAuthed ? (
-            <section className="px-8 py-10">
-              <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-                <div className="glass-panel p-5">
-                  <form onSubmit={createQuickTask} className="space-y-3">
-                    <div>
-                      <input
-                        ref={quickTitleRef}
-                        className="glass-input px-4 py-3 capture-title"
-                        value={quickTitle}
-                        onChange={(e) => {
-                          const nextValue = e.target.value;
-                          setQuickTitle(nextValue);
-                          setQuickExpanded(
-                            (prev) => prev || nextValue.trim().length > 0
-                          );
-                        }}
-                        onFocus={() => setQuickExpanded(true)}
-                        placeholder="Cosa devi fare?"
-                        required
-                        autoFocus
-                        aria-label="Titolo"
-                      />
-                    </div>
-
-                    <div
-                      className="capture-reveal space-y-4"
-                      data-open={quickExpanded ? "true" : "false"}
-                      aria-hidden={!quickExpanded}
-                    >
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <Select
-                            value={quickType}
-                            onChange={(next) =>
-                              setQuickType(next as TaskType)
-                            }
-                            options={TYPE_OPTIONS}
-                            placeholder="Tipo"
-                            ariaLabel="Tipo"
-                            showToneDot={false}
-                          />
-                        </div>
-                        <div className="field-soft">
-                          <Select
-                            value={quickPriority}
-                            onChange={(next) =>
-                              setQuickPriority(next as TaskPriority)
-                            }
-                            options={PRIORITY_OPTIONS}
-                            placeholder="Priorita"
-                            ariaLabel="Priorita"
-                            showToneDot={false}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="field-soft">
-                          <Select
-                            value={quickProject}
-                            onChange={handleQuickProjectChange}
-                            options={projectOptions}
-                            placeholder="Progetto"
-                            ariaLabel="Progetto"
-                          />
-                        </div>
-                        <div>
-                          <DatePicker
-                            mode="multiple"
-                            value={quickWorkDays}
-                            onChange={(next) => setQuickWorkDays(next)}
-                            inputClassName="px-3 py-2"
-                            placeholder="Giorni di lavoro"
-                            ariaLabel="Giorni di lavoro"
-                          />
-                        </div>
-                      </div>
-
-                      {quickProject === NEW_PROJECT_VALUE && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <input
-                            className="glass-input px-3 py-2 flex-1 min-w-[200px]"
-                            value={quickProjectDraft}
-                            onChange={(event) =>
-                              setQuickProjectDraft(event.target.value)
-                            }
-                            placeholder="Nome progetto"
-                            aria-label="Nome progetto"
-                          />
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            type="button"
-                            onClick={createQuickProject}
-                            disabled={quickProjectSaving}
-                          >
-                            {quickProjectSaving ? "Creo..." : "Crea"}
-                          </Button>
-                          <Button
-                            variant="tertiary"
-                            size="sm"
-                            type="button"
-                            onClick={() => {
-                              setQuickProject("");
-                              setQuickProjectDraft("");
-                              setQuickProjectErr(null);
-                            }}
-                          >
-                            Annulla
-                          </Button>
-                        </div>
-                      )}
-                      {quickProjectErr && (
-                        <p className="text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl">
-                          {quickProjectErr}
-                        </p>
-                      )}
-
-                      <div>
-                        <DatePicker
-                          value={quickDueDate}
-                          onChange={(next) => setQuickDueDate(next)}
-                          inputClassName="px-3 py-2"
-                          placeholder="Scadenza"
-                          ariaLabel="Scadenza"
-                        />
-                      </div>
-
-                      {quickErr && (
-                        <p className="text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl">
-                          {quickErr}
-                        </p>
-                      )}
-
-                      <Button
-                        variant="primary"
-                        size="md"
-                        disabled={quickSaving || quickTitle.trim().length === 0}
-                        type="submit"
-                        icon={<Icon name="plus" />}
-                        className="capture-submit"
-                      >
-                        {quickSaving ? "Salvo..." : "Aggiungi task"}
-                      </Button>
-
-                      {quickToast && (
-                        <div className="toast" role="status" aria-live="polite">
-                          {quickToast}
-                        </div>
-                      )}
-                    </div>
-                  </form>
-                </div>
-
-                <div className="glass-panel p-5">
-                  <SectionHeader
-                    title="Scadenze della settimana"
-                    subtitle="In arrivo"
-                  />
-
-                  {upcoming.length === 0 ? (
-                    <EmptyState
-                      title="Nessuna scadenza questa settimana"
-                      description="Programma un task con data per vederlo qui."
-                    />
-                  ) : (
-                    <ul className="mt-4 list-stack week-deadlines-list">
-                      {upcoming.map((task) => {
-                        const meta = joinMeta([
-                          task.due_date
-                            ? `Scadenza: ${formatDisplayDate(task.due_date)}`
-                            : null,
-                          task.project?.name ?? null,
-                        ]);
-                        const priorityMeta = getPriorityMeta(task.priority);
-                        return (
-                          <ListRow key={task.id} className="list-row-lg">
-                            <div className="min-w-0">
-                              <Link
-                                href={`/task/${task.id}`}
-                                className="link-primary stretched-link"
-                              >
-                                {task.title}
-                              </Link>
-                              <p className="meta-line mt-1">{meta}</p>
-                            </div>
-                            <span
-                              className={`badge-pill priority-pill priority-${priorityMeta.tone} px-2 py-1`}
-                            >
-                              {priorityMeta.emoji} {priorityMeta.label}
-                            </span>
-                          </ListRow>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
+            <>
+              <div className="text-center mb-5">
+                <h1 className="page-title">{greeting}</h1>
+                <p className="home-greeting-placeholder">
+                  Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+                </p>
               </div>
-            </section>
+
+              <div>
+                <section className="p-0">
+                  {planningErr ? (
+                    <p className="mt-3 text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl">
+                      {planningErr}
+                    </p>
+                  ) : null}
+
+                  {loadingPlanning ? (
+                    <div className="week-board-shell">
+                      <button
+                        type="button"
+                        className="week-side-arrow"
+                        aria-label="Settimana precedente"
+                        disabled
+                      >
+                        <Icon name="arrow-left" size={22} />
+                      </button>
+                      <div className="week-board week-board-home">
+                        {days.map((target) => (
+                          <div
+                            key={target.id}
+                            className="glass-panel week-column week-column-fixed"
+                          >
+                            <div className="week-column-header">
+                              <p className="week-column-label">{target.label}</p>
+                              <span className="week-column-date">
+                                {formatDisplayDate(target.date)}
+                              </span>
+                            </div>
+                            <SkeletonList rows={2} />
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="week-side-arrow"
+                        aria-label="Settimana successiva"
+                        disabled
+                      >
+                        <Icon name="arrow-right" size={22} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="week-board-shell">
+                        <button
+                          type="button"
+                          className="week-side-arrow"
+                          aria-label="Settimana precedente"
+                          onClick={() => setWeekStart(addDays(weekStart, -7))}
+                        >
+                          <Icon name="arrow-left" size={22} />
+                        </button>
+
+                        <div className="week-board week-board-home">
+                          {days.map((target) => {
+                            const columnTasks = getTasksFor(target);
+                            const deadlineTasks = deadlinesByDay.get(target.date) ?? [];
+                            const isToday = target.date === today;
+                            const isPast = target.date < today;
+
+                            return (
+                              <div
+                                key={target.id}
+                                className={
+                                  "glass-panel week-column week-column-fixed " +
+                                  (isToday ? "week-column-today " : "") +
+                                  (isPast ? "week-column-past " : "") +
+                                  (hoverTarget === target.id
+                                    ? "week-column-hover"
+                                    : "")
+                                }
+                                onDragOver={(event) => {
+                                  event.preventDefault();
+                                  setHoverTarget(target.id);
+                                }}
+                                onDragLeave={() => setHoverTarget(null)}
+                                onDrop={(event) => handleDrop(event, target.date)}
+                              >
+                                <div className="week-column-header">
+                                  <p className="week-column-label">{target.label}</p>
+                                  <span className="week-column-date">
+                                    {isToday ? "Oggi" : formatDisplayDate(target.date)}
+                                  </span>
+                                </div>
+
+                                {deadlineTasks.length > 0 ? (
+                                  <div className="deadline-strip">
+                                    {deadlineTasks.map((task) => (
+                                      <span
+                                        key={task.id}
+                                        className="deadline-chip cursor-grab active:cursor-grabbing"
+                                        draggable
+                                        onDragStart={(event) => {
+                                          event.dataTransfer.effectAllowed = "move";
+                                          event.dataTransfer.setData(
+                                            DRAG_TYPE_DEADLINE,
+                                            task.id
+                                          );
+                                          event.dataTransfer.setData(
+                                            "text/plain",
+                                            `${DEADLINE_PREFIX}${task.id}`
+                                          );
+                                        }}
+                                        onDragEnd={() => {
+                                          setHoverTarget(null);
+                                        }}
+                                      >
+                                        {task.title}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+
+                                {columnTasks.length > 0 ? (
+                                  <ul className="week-task-list">
+                                    {columnTasks.map((task) => {
+                                      const priorityMeta = getPriorityMeta(task.priority);
+                                      const typeMeta = getTypeMeta(task.type);
+
+                                      return (
+                                        <ListRow
+                                          key={task.id}
+                                          className={`list-row-compact list-row-stack week-task cursor-grab active:cursor-grabbing priority-card priority-card-${priorityMeta.tone}`}
+                                          draggable
+                                          onDragStart={(event) => {
+                                            event.dataTransfer.effectAllowed = "move";
+                                            event.dataTransfer.setData(
+                                              DRAG_TYPE_TASK,
+                                              task.id
+                                            );
+                                            event.dataTransfer.setData(
+                                              "text/plain",
+                                              task.id
+                                            );
+                                            dropHandledRef.current = false;
+                                            setDraggingId(task.id);
+                                            draggingIdRef.current = task.id;
+                                            setDraggingFrom(target.date);
+                                            draggingFromRef.current = target.date;
+                                          }}
+                                          onDragEnd={(event) => {
+                                            const taskId =
+                                              draggingIdRef.current ??
+                                              parseDraggedTaskId(
+                                                event.dataTransfer.getData("text/plain")
+                                              );
+                                            const fromDate =
+                                              draggingFromRef.current ?? draggingFrom;
+                                            if (
+                                              !dropHandledRef.current &&
+                                              fromDate &&
+                                              taskId
+                                            ) {
+                                              removeDayFromTask(taskId, fromDate);
+                                            }
+                                            dropHandledRef.current = false;
+                                            setDraggingId(null);
+                                            draggingIdRef.current = null;
+                                            setDraggingFrom(null);
+                                            draggingFromRef.current = null;
+                                          }}
+                                        >
+                                          <button
+                                            type="button"
+                                            className="text-sm week-task-title week-task-title-btn"
+                                            onPointerDown={(event) => event.stopPropagation()}
+                                            onClick={() => setTaskActionTarget(task)}
+                                          >
+                                            {task.title}
+                                          </button>
+                                          <div className="flex flex-wrap items-center week-task-meta">
+                                            <span className="meta-line week-task-type">
+                                              {typeMeta.emoji}
+                                            </span>
+                                            <span className="meta-line meta-project">
+                                              · {task.project?.name ?? "NESSUN PROGETTO"}
+                                            </span>
+                                          </div>
+                                        </ListRow>
+                                      );
+                                    })}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="week-side-arrow"
+                          aria-label="Settimana successiva"
+                          onClick={() => setWeekStart(addDays(weekStart, 7))}
+                        >
+                          <Icon name="arrow-right" size={22} />
+                        </button>
+                      </div>
+
+                    </>
+                  )}
+                </section>
+              </div>
+            </>
           ) : (
-            <section className="px-8 py-10">
+            <section className="px-2 py-8">
               <EmptyState
                 title="Accedi per iniziare"
                 description="Il tuo spazio di lavoro e le tue liste ti aspettano."
@@ -565,6 +746,71 @@ export default function HomePage() {
           )}
         </div>
       </main>
+      <TaskEditModal
+        open={Boolean(editingTask)}
+        task={editingTask}
+        projects={projects}
+        onClose={() => setEditingTask(null)}
+        onSaved={() => {
+          setEditingTask(null);
+          void loadPlanningData();
+        }}
+      />
+      {taskCompletedOverlayVisible ? (
+        <div className="task-created-overlay" role="status" aria-live="polite">
+          <p className="task-created-overlay-text">Task completato</p>
+        </div>
+      ) : null}
+      {taskActionTarget ? (
+        <div
+          className="app-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Azione task"
+          onClick={() => setTaskActionTarget(null)}
+        >
+          <div
+            className="app-confirm-dialog project-type-picker week-task-action-picker"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="project-type-title">Cosa vuoi fare?</p>
+            <div className="wizard-type-switch week-task-action-switch">
+              <button
+                type="button"
+                className="wizard-type-btn"
+                onClick={() => {
+                  const target = taskActionTarget;
+                  setTaskActionTarget(null);
+                  if (target) {
+                    setEditingTask(target);
+                  }
+                }}
+                disabled={Boolean(completingId)}
+              >
+                Modifica
+              </button>
+              <button
+                type="button"
+                className="wizard-type-btn week-task-action-complete"
+                onClick={() => {
+                  void completeTaskFromWeek(taskActionTarget);
+                }}
+                disabled={completingId === taskActionTarget.id}
+              >
+                {completingId === taskActionTarget.id ? "Completo..." : "Completa"}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="project-type-cancel"
+              onClick={() => setTaskActionTarget(null)}
+              disabled={Boolean(completingId)}
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -6,24 +6,6 @@ import Button from "@/components/Button";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
 
-type ProfileRow = {
-  user_id: string;
-  email: string;
-  full_name: string;
-};
-
-function formatNameFromEmail(email: string): string {
-  const local = email.split("@")[0]?.trim();
-  if (!local) return email;
-  const cleaned = local.replace(/[._-]+/g, " ").trim();
-  if (!cleaned) return local;
-  return cleaned
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 export default function WelcomePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);

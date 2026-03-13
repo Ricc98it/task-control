@@ -25,6 +25,9 @@ type SelectProps = {
   size?: "sm" | "md";
   className?: string;
   showToneDot?: boolean;
+  createPlaceholder?: string;
+  onCreateOption?: (label: string) => Promise<void> | void;
+  maxVisibleOptions?: number;
 };
 
 export default function Select({
@@ -37,22 +40,20 @@ export default function Select({
   size = "md",
   className,
   showToneDot = true,
+  createPlaceholder,
+  onCreateOption,
+  maxVisibleOptions,
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [newOptionLabel, setNewOptionLabel] = useState("");
+  const [creatingOption, setCreatingOption] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
-  const selectedIndex = Math.max(
-    0,
-    options.findIndex((option) => option.value === value)
-  );
-  const selectedOption = options[selectedIndex];
-
-  useEffect(() => {
-    if (!open) return;
-    setActiveIndex(selectedIndex);
-  }, [open, selectedIndex]);
+  const selectedIndex = options.findIndex((option) => option.value === value);
+  const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : undefined;
+  const createCandidate = newOptionLabel.trim();
 
   useEffect(() => {
     if (!open) return;
@@ -77,12 +78,31 @@ export default function Select({
 
   function toggleOpen() {
     if (disabled) return;
-    setOpen((prev) => !prev);
+    setOpen((prev) => {
+      if (prev) return false;
+      setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+      return true;
+    });
   }
 
   function chooseOption(option: SelectOption) {
     onChange(option.value);
     setOpen(false);
+  }
+
+  async function handleCreateOption() {
+    if (!onCreateOption || creatingOption) return;
+    const next = newOptionLabel.trim();
+    if (!next) return;
+
+    setCreatingOption(true);
+    try {
+      await onCreateOption(next);
+      setNewOptionLabel("");
+      setOpen(false);
+    } finally {
+      setCreatingOption(false);
+    }
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
@@ -99,6 +119,7 @@ export default function Select({
         event.key === " "
       ) {
         event.preventDefault();
+        setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
         setOpen(true);
       }
       return;
@@ -190,39 +211,81 @@ export default function Select({
           role="listbox"
           id={listId}
         >
-          {options.map((option, index) => {
-            const isSelected = option.value === value;
-            const isActive = index === activeIndex;
-            return (
-              <button
-                type="button"
-                key={option.value}
-                id={`${listId}-opt-${index}`}
-                role="option"
-                aria-selected={isSelected}
-                className={`select-option ${
-                  option.tone ? `select-tone-${option.tone}` : ""
-                }`}
-                data-selected={isSelected ? "true" : "false"}
-                data-active={isActive ? "true" : "false"}
-                onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => chooseOption(option)}
-              >
-                <span className="select-option-label">
-                  {showToneDot && option.tone ? (
-                    <span
-                      className={`select-dot select-dot-${option.tone}`}
-                      aria-hidden="true"
-                    />
+          {onCreateOption ? (
+            <div className="select-create-row">
+              <input
+                type="text"
+                className="glass-input select-create-input"
+                value={newOptionLabel}
+                onChange={(event) => setNewOptionLabel(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  void handleCreateOption();
+                }}
+                placeholder={createPlaceholder ?? "Nuovo elemento"}
+                disabled={creatingOption}
+                aria-label={createPlaceholder ?? "Nuovo elemento"}
+              />
+            </div>
+          ) : null}
+
+          {onCreateOption && createCandidate ? (
+            <button
+              type="button"
+              className="select-option select-option-create"
+              onClick={() => {
+                void handleCreateOption();
+              }}
+            >
+              <span className="select-option-label">
+                Aggiungi &quot;{createCandidate}&quot;
+              </span>
+            </button>
+          ) : null}
+
+          <div
+            className="select-options-scroll"
+            style={
+              maxVisibleOptions
+                ? { maxHeight: `${Math.max(1, maxVisibleOptions) * 48}px` }
+                : undefined
+            }
+          >
+            {options.map((option, index) => {
+              const isSelected = option.value === value;
+              const isActive = index === activeIndex;
+              return (
+                <button
+                  type="button"
+                  key={option.value}
+                  id={`${listId}-opt-${index}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`select-option ${
+                    option.tone ? `select-tone-${option.tone}` : ""
+                  }`}
+                  data-selected={isSelected ? "true" : "false"}
+                  data-active={isActive ? "true" : "false"}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => chooseOption(option)}
+                >
+                  <span className="select-option-label">
+                    {showToneDot && option.tone ? (
+                      <span
+                        className={`select-dot select-dot-${option.tone}`}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <span>{option.label}</span>
+                  </span>
+                  {option.description ? (
+                    <span className="select-option-desc">{option.description}</span>
                   ) : null}
-                  <span>{option.label}</span>
-                </span>
-                {option.description ? (
-                  <span className="select-option-desc">{option.description}</span>
-                ) : null}
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </div>

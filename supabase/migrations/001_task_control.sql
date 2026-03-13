@@ -7,6 +7,14 @@ create table if not exists projects (
   created_at timestamptz not null default now()
 );
 
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  type text not null default 'WORK',
+  due_date date,
+  created_at timestamptz not null default now()
+);
+
 alter table tasks
   add column if not exists status text not null default 'INBOX',
   add column if not exists priority text,
