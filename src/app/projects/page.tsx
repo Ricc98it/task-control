@@ -68,7 +68,11 @@ export default function ProjectsPage() {
     ]);
 
     if (projectsRes.error || usageRes.error) {
-      setErr(projectsRes.error?.message ?? usageRes.error?.message ?? "Errore caricamento.");
+      setErr(
+        projectsRes.error?.message ??
+          usageRes.error?.message ??
+          "Errore caricamento."
+      );
       setLoading(false);
       return;
     }

@@ -18,6 +18,7 @@ import Nav from "@/components/Nav";
 import SkeletonList from "@/components/SkeletonList";
 import TaskEditModal from "@/components/TaskEditModal";
 import { ensureSession } from "@/lib/autoSession";
+import { getHomeContextHints } from "@/lib/contextHints";
 import { emitTasksUpdated, onTasksUpdated } from "@/lib/taskEvents";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -114,6 +115,9 @@ export default function HomePage() {
   const [taskActionTarget, setTaskActionTarget] = useState<Task | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [taskCompletedOverlayVisible, setTaskCompletedOverlayVisible] = useState(false);
+  const [homeContextHint, setHomeContextHint] = useState(
+    "Sto aggiornando le informazioni utili per oggi..."
+  );
   const [loadingPlanning, setLoadingPlanning] = useState(true);
   const [planningErr, setPlanningErr] = useState<string | null>(null);
 
@@ -489,6 +493,47 @@ export default function HomePage() {
     isAuthed && profileChecked && !profileLoading && !profile?.full_name;
   const greetingName = profile?.full_name ?? userName;
   const greeting = greetingName ? `Ciao ${greetingName}!` : "Ciao!";
+  const homeContextHintOptions = useMemo(() => {
+    if (loadingPlanning) return [];
+    const todayTasks = tasks.filter((task) => task.work_days?.includes(today)).length;
+    const criticalTodayTasks = tasks.filter(
+      (task) =>
+        task.work_days?.includes(today) &&
+        (task.priority === "P0" || task.priority === "P1")
+    ).length;
+    const weekDeadlines = deadlines.length;
+    const unassignedTodayTasks = tasks.filter(
+      (task) => task.work_days?.includes(today) && !task.project?.name
+    ).length;
+    return getHomeContextHints({
+      todayTasks,
+      criticalTodayTasks,
+      weekDeadlines,
+      unassignedTodayTasks,
+    });
+  }, [deadlines, loadingPlanning, tasks, today]);
+
+  useEffect(() => {
+    if (loadingPlanning) {
+      setHomeContextHint("Sto aggiornando le informazioni utili per oggi...");
+      return;
+    }
+
+    if (homeContextHintOptions.length === 0) {
+      setHomeContextHint("Settimana leggera: nessun task pianificato per oggi");
+      return;
+    }
+
+    setHomeContextHint((previous) => {
+      if (homeContextHintOptions.length === 1) return homeContextHintOptions[0];
+      const pool = previous
+        ? homeContextHintOptions.filter((hint) => hint !== previous)
+        : homeContextHintOptions;
+      const source = pool.length > 0 ? pool : homeContextHintOptions;
+      const randomIndex = Math.floor(Math.random() * source.length);
+      return source[randomIndex];
+    });
+  }, [homeContextHintOptions, loadingPlanning]);
 
   useEffect(() => {
     if (!shouldOnboard) return;
@@ -522,7 +567,7 @@ export default function HomePage() {
               <div className="text-center mb-5">
                 <h1 className="page-title">{greeting}</h1>
                 <p className="home-greeting-placeholder">
-                  Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+                  {homeContextHint}
                 </p>
               </div>
 

@@ -1164,6 +1164,13 @@ select.glass-input {
   color: rgba(148, 163, 184, 0.92);
 }
 
+.context-hint-line {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(148, 163, 184, 0.92);
+}
+
 .name-input {
   font-size: 30px;
   font-weight: 600;
@@ -1560,6 +1567,14 @@ select.glass-input {
 
 .tasks-list-shell {
   margin-top: 28px;
+}
+
+.tasks-empty-state {
+  min-height: clamp(240px, 45vh, 420px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .task-row-slim {

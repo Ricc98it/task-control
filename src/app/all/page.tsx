@@ -245,7 +245,9 @@ export default function AllTasksPage() {
           ) : (
             <div className="tasks-list-shell">
               {tasks.length === 0 ? (
-                <p className="meta-line">Nessun task qui.</p>
+                <div className="tasks-empty-state">
+                  <p className="meta-line">Nessun task qui.</p>
+                </div>
               ) : (
                 <ul className="list-stack">
                   {tasks.map((task) => {
