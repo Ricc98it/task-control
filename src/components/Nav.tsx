@@ -198,6 +198,32 @@ export default function Nav() {
     };
   }, [logoutConfirmOpen, loggingOut]);
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+
+    if (isMobile) {
+      html.classList.add("mobile-app-locked-html");
+      body.classList.add("mobile-app-locked");
+    } else {
+      html.classList.remove("mobile-app-locked-html");
+      body.classList.remove("mobile-app-locked");
+      body.classList.remove("wizard-open-mobile");
+    }
+
+    if (isMobile && wizardOpen) {
+      body.classList.add("wizard-open-mobile");
+    } else {
+      body.classList.remove("wizard-open-mobile");
+    }
+
+    return () => {
+      html.classList.remove("mobile-app-locked-html");
+      body.classList.remove("mobile-app-locked");
+      body.classList.remove("wizard-open-mobile");
+    };
+  }, [isMobile, wizardOpen]);
+
   return (
     <>
       {isMobile ? (
@@ -206,7 +232,6 @@ export default function Nav() {
             {flowBoard.map((item) => {
               const count = item.key ? summary?.[item.key] ?? 0 : 0;
               const isActive = activeFlow === item.href;
-              const isAlert = item.key === "overdue" && count > 0;
               const isHome = item.variant === "home";
 
               return (
@@ -217,8 +242,7 @@ export default function Nav() {
                   aria-label={isHome ? "Home" : item.label}
                   className={
                     "mobile-nav-link " +
-                    (isActive ? "mobile-nav-link-active " : "") +
-                    (isAlert ? "mobile-nav-link-alert " : "")
+                    (isActive ? "mobile-nav-link-active " : "")
                   }
                 >
                   <span className="mobile-nav-label">
