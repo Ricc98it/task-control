@@ -1168,7 +1168,7 @@ export default function HomePage() {
                 description="Il tuo spazio di lavoro e le tue liste ti aspettano."
                 action={
                   <Link href="/login" className="btn-primary px-4 py-2 text-sm">
-                    Accedi con magic link
+                    Accedi con codice email
                   </Link>
                 }
               />
