@@ -896,7 +896,9 @@ export default function HomePage() {
                                 </button>
                               ))}
                             </div>
-                          ) : null}
+                          ) : (
+                            <p className="week-deadline-empty">Nessuna scadenza</p>
+                          )}
 
                           {mobileDayTasks.length > 0 ? (
                             <ul className="week-task-list mobile-week-task-list">
@@ -1068,7 +1070,9 @@ export default function HomePage() {
                                         </span>
                                       ))}
                                     </div>
-                                  ) : null}
+                                  ) : (
+                                    <p className="week-deadline-empty">Nessuna scadenza</p>
+                                  )}
 
                                   {columnTasks.length > 0 ? (
                                     <ul className="week-task-list">
