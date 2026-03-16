@@ -2395,7 +2395,7 @@ body.wizard-open-mobile .mobile-bottom-switcher-shell {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 22px 14px calc(16px + env(safe-area-inset-bottom));
+  padding: 30px 16px calc(22px + env(safe-area-inset-bottom));
 }
 
 .wizard-modal-mobile .wizard-modal-header {
@@ -2405,7 +2405,7 @@ body.wizard-open-mobile .mobile-bottom-switcher-shell {
   transform: none;
   width: 100%;
   pointer-events: auto;
-  margin-bottom: 14px;
+  margin-bottom: 20px;
 }
 
 .wizard-modal-mobile .wizard-heading {
@@ -2424,14 +2424,14 @@ body.wizard-open-mobile .mobile-bottom-switcher-shell {
   flex: 0 1 auto;
   margin-top: 0;
   justify-content: center;
-  gap: 18px;
+  gap: 28px;
   overflow: hidden;
 }
 
 .wizard-modal-mobile .wizard-step {
   width: 100%;
   flex: 0 0 auto;
-  gap: 14px;
+  gap: 20px;
 }
 
 .wizard-modal-mobile .wizard-step-intro {
@@ -2444,7 +2444,7 @@ body.wizard-open-mobile .mobile-bottom-switcher-shell {
 
 .wizard-modal-mobile .wizard-grid {
   grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  gap: 16px;
 }
 
 .wizard-modal-mobile .wizard-type-row {
@@ -2452,9 +2452,9 @@ body.wizard-open-mobile .mobile-bottom-switcher-shell {
   left: auto;
   top: auto;
   transform: none;
-  margin-top: 12px;
+  margin-top: 18px;
   width: 100%;
-  gap: 12px;
+  gap: 14px;
 }
 
 .wizard-modal-mobile.wizard-modal-step-2 .wizard-step,
