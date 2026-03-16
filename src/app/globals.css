@@ -1384,13 +1384,22 @@ select.glass-input {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  min-height: 24px;
+  align-items: flex-start;
 }
 
 .week-deadline-empty {
-  margin: 2px 0 0;
+  margin: 0;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px dashed rgba(148, 163, 184, 0.34);
+  background: rgba(30, 41, 59, 0.3);
   font-size: 11px;
   font-weight: 600;
-  color: rgba(148, 163, 184, 0.72);
+  color: rgba(148, 163, 184, 0.78);
 }
 
 .deadline-chip {
