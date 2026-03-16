@@ -7,6 +7,7 @@ import TaskWizardModal from "@/components/TaskWizardModal";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
 import { onTasksUpdated } from "@/lib/taskEvents";
+import { useIsMobile } from "@/lib/useIsMobile";
 
 type SessionState = "loading" | "authed" | "anon";
 type SummaryKey = "inbox" | "overdue" | "projects";
@@ -56,6 +57,7 @@ function resolveActiveFlow(pathname: string | null) {
 export default function Nav() {
   const router = useRouter();
   const pathname = usePathname();
+  const isMobile = useIsMobile();
   const activeFlow = resolveActiveFlow(pathname);
   const [sessionState, setSessionState] = useState<SessionState>("loading");
   const [loggingOut, setLoggingOut] = useState(false);
@@ -198,77 +200,43 @@ export default function Nav() {
 
   return (
     <>
-      <div className="sticky top-0 z-20">
-        <div className="nav-shell">
-          <div className="nav-layout">
-            <nav className="nav-board">
-              {flowBoard.map((item) => {
-                const count = item.key ? summary?.[item.key] ?? 0 : 0;
-                const isAlert = item.key === "overdue" && count > 0;
-                const isActive = activeFlow === item.href;
-                if (item.variant === "home") {
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      aria-current={isActive ? "page" : undefined}
-                      aria-label="Home"
-                      className={
-                        "flow-card flow-card-home " +
-                        (isActive ? "flow-card-active" : "")
-                      }
-                    >
-                      <span className="flow-card-home-emoji">🏠</span>
-                    </Link>
-                  );
-                }
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={isActive ? "page" : undefined}
-                    className={
-                      "flow-card flow-card-main " +
-                      (item.variant === "home" ? "flow-card-home " : "") +
-                      (isAlert ? "border-rose-400/40 " : "") +
-                      (isActive ? "flow-card-active" : "")
-                    }
-                  >
-                    <span className="flow-card-section">{item.label}</span>
-                    <span
-                      className={
-                        "flow-card-metric " +
-                        (isAlert ? "text-rose-200" : "") +
-                        (sessionState === "authed" ? "" : " flow-card-metric-muted")
-                      }
-                    >
+      {isMobile ? (
+        <div className="mobile-nav-shell">
+          <nav className="mobile-nav-board" aria-label="Navigazione mobile">
+            {flowBoard.map((item) => {
+              const count = item.key ? summary?.[item.key] ?? 0 : 0;
+              const isActive = activeFlow === item.href;
+              const isAlert = item.key === "overdue" && count > 0;
+              const isHome = item.variant === "home";
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label={isHome ? "Home" : item.label}
+                  className={
+                    "mobile-nav-link " +
+                    (isActive ? "mobile-nav-link-active " : "") +
+                    (isAlert ? "mobile-nav-link-alert " : "")
+                  }
+                >
+                  <span className="mobile-nav-label">
+                    {isHome ? "🏠" : item.label}
+                  </span>
+                  {!isHome ? (
+                    <span className="mobile-nav-count">
                       {sessionState === "authed" && item.key ? count : "-"}
                     </span>
-                  </Link>
-                );
-              })}
-              {sessionState === "authed" && (
-                <div className="nav-logout">
-                  <button
-                    type="button"
-                    className="flow-card flow-card-home nav-logout-button"
-                    onClick={() => setLogoutConfirmOpen(true)}
-                    disabled={loggingOut}
-                    aria-label="Logout"
-                    title="Logout"
-                  >
-                    <span className="flow-card-home-emoji">
-                      {loggingOut ? "⏳" : "🚪"}
-                    </span>
-                  </button>
-                </div>
-              )}
-            </nav>
-            {sessionState === "authed" && (
-              <div className="nav-cta">
+                  ) : null}
+                </Link>
+              );
+            })}
+            {sessionState === "authed" ? (
+              <>
                 <button
                   type="button"
-                  className="nav-add-button"
+                  className="mobile-nav-link mobile-nav-add"
                   onClick={() => {
                     setWizardKey((prev) => prev + 1);
                     setWizardOpen(true);
@@ -276,13 +244,109 @@ export default function Nav() {
                   aria-label="Aggiungi task"
                   title="Aggiungi task"
                 >
-                  <span className="nav-add-plus">+</span>
+                  +
                 </button>
-              </div>
-            )}
+                <button
+                  type="button"
+                  className="mobile-nav-link"
+                  onClick={() => setLogoutConfirmOpen(true)}
+                  disabled={loggingOut}
+                  aria-label="Logout"
+                  title="Logout"
+                >
+                  {loggingOut ? "⏳" : "🚪"}
+                </button>
+              </>
+            ) : null}
+          </nav>
+        </div>
+      ) : (
+        <div className="sticky top-0 z-20">
+          <div className="nav-shell">
+            <div className="nav-layout">
+              <nav className="nav-board">
+                {flowBoard.map((item) => {
+                  const count = item.key ? summary?.[item.key] ?? 0 : 0;
+                  const isAlert = item.key === "overdue" && count > 0;
+                  const isActive = activeFlow === item.href;
+                  if (item.variant === "home") {
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        aria-current={isActive ? "page" : undefined}
+                        aria-label="Home"
+                        className={
+                          "flow-card flow-card-home " +
+                          (isActive ? "flow-card-active" : "")
+                        }
+                      >
+                        <span className="flow-card-home-emoji">🏠</span>
+                      </Link>
+                    );
+                  }
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      aria-current={isActive ? "page" : undefined}
+                      className={
+                        "flow-card flow-card-main " +
+                        (item.variant === "home" ? "flow-card-home " : "") +
+                        (isAlert ? "border-rose-400/40 " : "") +
+                        (isActive ? "flow-card-active" : "")
+                      }
+                    >
+                      <span className="flow-card-section">{item.label}</span>
+                      <span
+                        className={
+                          "flow-card-metric " +
+                          (isAlert ? "text-rose-200" : "") +
+                          (sessionState === "authed" ? "" : " flow-card-metric-muted")
+                        }
+                      >
+                        {sessionState === "authed" && item.key ? count : "-"}
+                      </span>
+                    </Link>
+                  );
+                })}
+                {sessionState === "authed" && (
+                  <div className="nav-logout">
+                    <button
+                      type="button"
+                      className="flow-card flow-card-home nav-logout-button"
+                      onClick={() => setLogoutConfirmOpen(true)}
+                      disabled={loggingOut}
+                      aria-label="Logout"
+                      title="Logout"
+                    >
+                      <span className="flow-card-home-emoji">
+                        {loggingOut ? "⏳" : "🚪"}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </nav>
+              {sessionState === "authed" && (
+                <div className="nav-cta">
+                  <button
+                    type="button"
+                    className="nav-add-button"
+                    onClick={() => {
+                      setWizardKey((prev) => prev + 1);
+                      setWizardOpen(true);
+                    }}
+                    aria-label="Aggiungi task"
+                    title="Aggiungi task"
+                  >
+                    <span className="nav-add-plus">+</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <TaskWizardModal
         key={wizardKey}
         open={sessionState === "authed" && wizardOpen}

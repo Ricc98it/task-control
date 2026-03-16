@@ -10,6 +10,7 @@ import TaskEditModal from "@/components/TaskEditModal";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
 import { emitTasksUpdated } from "@/lib/taskEvents";
+import { useIsMobile } from "@/lib/useIsMobile";
 import {
   formatDisplayDate,
   formatWorkDaysSummary,
@@ -30,6 +31,7 @@ const PLAN_FILTER_OPTIONS = [
 ] as const;
 
 export default function AllTasksPage() {
+  const isMobile = useIsMobile();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,48 +167,58 @@ export default function AllTasksPage() {
     void loadData();
   }, [loadData]);
 
+  const typeSwitcher = (
+    <div
+      className="wizard-type-switch project-type-switch tasks-main-switch"
+      role="tablist"
+      aria-label="Tipo task"
+    >
+      <button
+        type="button"
+        className={`wizard-type-btn ${activeType === "WORK" ? "is-active" : ""}`}
+        onClick={() => {
+          setActiveType("WORK");
+          setProjectFilter("ALL");
+        }}
+        role="tab"
+        aria-selected={activeType === "WORK"}
+      >
+        💼 Lavoro
+      </button>
+      <button
+        type="button"
+        className={`wizard-type-btn ${activeType === "PERSONAL" ? "is-active" : ""}`}
+        onClick={() => {
+          setActiveType("PERSONAL");
+          setProjectFilter("ALL");
+        }}
+        role="tab"
+        aria-selected={activeType === "PERSONAL"}
+      >
+        🏡 Personale
+      </button>
+    </div>
+  );
+
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-6 app-page">
+      <main
+        className={`min-h-screen px-6 py-6 app-page ${
+          isMobile ? "app-page-mobile-switcher" : ""
+        }`.trim()}
+      >
         <div className="app-shell max-w-5xl mx-auto px-6 pb-8 pt-3 sm:px-8 sm:pb-10 sm:pt-4">
           <div className="tasks-toolbar">
-            <div className="tasks-main-switch-wrap">
-              <div
-                className="wizard-type-switch project-type-switch tasks-main-switch"
-                role="tablist"
-                aria-label="Tipo task"
-              >
-                <button
-                  type="button"
-                  className={`wizard-type-btn ${activeType === "WORK" ? "is-active" : ""}`}
-                  onClick={() => {
-                    setActiveType("WORK");
-                    setProjectFilter("ALL");
-                  }}
-                  role="tab"
-                  aria-selected={activeType === "WORK"}
-                >
-                  💼 Lavoro
-                </button>
-                <button
-                  type="button"
-                  className={`wizard-type-btn ${
-                    activeType === "PERSONAL" ? "is-active" : ""
-                  }`}
-                  onClick={() => {
-                    setActiveType("PERSONAL");
-                    setProjectFilter("ALL");
-                  }}
-                  role="tab"
-                  aria-selected={activeType === "PERSONAL"}
-                >
-                  🏡 Personale
-                </button>
-              </div>
-            </div>
+            {!isMobile ? (
+              <div className="tasks-main-switch-wrap">{typeSwitcher}</div>
+            ) : null}
 
-            <div className="tasks-filter-grid">
+            <div
+              className={`tasks-filter-grid ${
+                isMobile ? "tasks-filter-grid-mobile" : ""
+              }`.trim()}
+            >
               <Select
                 value={priorityFilter}
                 onChange={(next) => setPriorityFilter(next as "ALL" | TaskPriority)}
@@ -314,6 +326,11 @@ export default function AllTasksPage() {
           )}
         </div>
       </main>
+      {isMobile ? (
+        <div className="mobile-bottom-switcher-shell">
+          <div className="mobile-bottom-switcher">{typeSwitcher}</div>
+        </div>
+      ) : null}
 
       <TaskEditModal
         open={Boolean(editingTask)}

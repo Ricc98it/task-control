@@ -1,12 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type TouchEvent,
+} from "react";
 import DatePicker from "@/components/DatePicker";
 import Icon from "@/components/Icon";
 import Select from "@/components/Select";
 import { ensureSession } from "@/lib/autoSession";
 import { supabase } from "@/lib/supabaseClient";
 import { emitTasksUpdated } from "@/lib/taskEvents";
+import { useIsMobile } from "@/lib/useIsMobile";
 import {
   PRIORITY_OPTIONS,
   type Project,
@@ -28,6 +37,7 @@ export default function TaskWizardModal({
   onClose,
   onCreated,
 }: TaskWizardModalProps) {
+  const isMobile = useIsMobile();
   const [step, setStep] = useState<WizardStep>(1);
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("WORK");
@@ -46,6 +56,8 @@ export default function TaskWizardModal({
   const formRef = useRef<HTMLFormElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const titleFlashTimerRef = useRef<number | null>(null);
+  const swipeStartXRef = useRef<number | null>(null);
+  const swipeStartYRef = useRef<number | null>(null);
 
   const normalizedDraftWorkDays = useMemo(
     () => Array.from(new Set(workDaysDraft)).sort(),
@@ -324,6 +336,37 @@ export default function TaskWizardModal({
     handleNextStep();
   }
 
+  function handleSwipeStart(event: TouchEvent<HTMLFormElement>) {
+    if (!isMobile || saving) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    swipeStartXRef.current = touch.clientX;
+    swipeStartYRef.current = touch.clientY;
+  }
+
+  function handleSwipeEnd(event: TouchEvent<HTMLFormElement>) {
+    if (!isMobile || saving) return;
+    const touch = event.changedTouches[0];
+    const startX = swipeStartXRef.current;
+    const startY = swipeStartYRef.current;
+    swipeStartXRef.current = null;
+    swipeStartYRef.current = null;
+    if (!touch || startX === null || startY === null) return;
+    if (document.querySelector(".date-overlay, .select-menu")) return;
+
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
+    if (Math.abs(deltaX) < 64 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+
+    if (deltaX < 0 && step < 3) {
+      handleNextStep();
+      return;
+    }
+    if (deltaX > 0 && step > 1) {
+      handlePrevStep();
+    }
+  }
+
   if (!open) return null;
 
   return (
@@ -371,7 +414,13 @@ export default function TaskWizardModal({
               </button>
             </div>
 
-            <form ref={formRef} onSubmit={handleSubmit} className="wizard-modal-form">
+            <form
+              ref={formRef}
+              onSubmit={handleSubmit}
+              className="wizard-modal-form"
+              onTouchStart={handleSwipeStart}
+              onTouchEnd={handleSwipeEnd}
+            >
               {step === 1 ? (
                 <div className="wizard-step wizard-step-intro">
                   <div className="wizard-primary-row wizard-title-row">

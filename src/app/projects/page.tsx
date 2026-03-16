@@ -10,6 +10,7 @@ import ListRow from "@/components/ListRow";
 import SkeletonList from "@/components/SkeletonList";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
+import { useIsMobile } from "@/lib/useIsMobile";
 import { type Project, type TaskType } from "@/lib/tasks";
 
 type ProjectUsageRow = {
@@ -28,6 +29,7 @@ function getUsageMessage(total: number): string {
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [projects, setProjects] = useState<Project[]>([]);
   const [usageByProject, setUsageByProject] = useState<Record<string, ProjectUsage>>({});
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,7 @@ export default function ProjectsPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [createTypeOpen, setCreateTypeOpen] = useState(false);
   const [pendingProjectName, setPendingProjectName] = useState("");
+  const [activeType, setActiveType] = useState<TaskType>("WORK");
   const [nameInvalidFlash, setNameInvalidFlash] = useState(false);
   const nameFlashTimerRef = useRef<number | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -284,6 +287,29 @@ export default function ProjectsPage() {
   const deleteAssignedCount = deleteTarget
     ? usageByProject[deleteTarget.id]?.total ?? 0
     : 0;
+  const activeProjects = activeType === "WORK" ? workProjects : personalProjects;
+  const typeSwitcher = (
+    <div className="wizard-type-switch tasks-main-switch" role="tablist" aria-label="Tipo progetto">
+      <button
+        type="button"
+        className={`wizard-type-btn ${activeType === "WORK" ? "is-active" : ""}`}
+        onClick={() => setActiveType("WORK")}
+        role="tab"
+        aria-selected={activeType === "WORK"}
+      >
+        💼 Lavoro
+      </button>
+      <button
+        type="button"
+        className={`wizard-type-btn ${activeType === "PERSONAL" ? "is-active" : ""}`}
+        onClick={() => setActiveType("PERSONAL")}
+        role="tab"
+        aria-selected={activeType === "PERSONAL"}
+      >
+        🏡 Personale
+      </button>
+    </div>
+  );
 
   function renderProjectList(bucketProjects: Project[]) {
     return bucketProjects.length === 0 ? (
@@ -374,7 +400,11 @@ export default function ProjectsPage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-6 py-6 app-page">
+      <main
+        className={`min-h-screen px-6 py-6 app-page ${
+          isMobile ? "app-page-mobile-switcher" : ""
+        }`.trim()}
+      >
         <div className="app-shell today-shell projects-shell max-w-5xl mx-auto px-6 pb-8 pt-3 sm:px-8 sm:pb-10 sm:pt-4">
           <form
             onSubmit={openCreateTypeDialog}
@@ -411,30 +441,50 @@ export default function ProjectsPage() {
             {loading ? (
               <SkeletonList rows={4} />
             ) : (
-              <div className="projects-grid">
-                <div className="projects-column">
-                  <div className="projects-section-header">
-                    <h2 className="projects-section-title">💼 Lavoro</h2>
-                    <span className="projects-section-subtitle">
-                      {workProjects.length} progetti assegnati
-                    </span>
+              <>
+                {isMobile ? (
+                  <div className="projects-grid projects-grid-mobile">
+                    <div className="projects-column">
+                      <div className="projects-section-header">
+                        <h2 className="projects-section-title">
+                          {activeType === "WORK" ? "💼 Lavoro" : "🏡 Personale"}
+                        </h2>
+                        <span className="projects-section-subtitle">
+                          {activeProjects.length} progetti assegnati
+                        </span>
+                      </div>
+                      <section className="today-section projects-panel">
+                        {renderProjectList(activeProjects)}
+                      </section>
+                    </div>
                   </div>
-                  <section className="today-section projects-panel">
-                    {renderProjectList(workProjects)}
-                  </section>
-                </div>
-                <div className="projects-column">
-                  <div className="projects-section-header">
-                    <h2 className="projects-section-title">🏡 Personale</h2>
-                    <span className="projects-section-subtitle">
-                      {personalProjects.length} progetti assegnati
-                    </span>
+                ) : (
+                  <div className="projects-grid">
+                    <div className="projects-column">
+                      <div className="projects-section-header">
+                        <h2 className="projects-section-title">💼 Lavoro</h2>
+                        <span className="projects-section-subtitle">
+                          {workProjects.length} progetti assegnati
+                        </span>
+                      </div>
+                      <section className="today-section projects-panel">
+                        {renderProjectList(workProjects)}
+                      </section>
+                    </div>
+                    <div className="projects-column">
+                      <div className="projects-section-header">
+                        <h2 className="projects-section-title">🏡 Personale</h2>
+                        <span className="projects-section-subtitle">
+                          {personalProjects.length} progetti assegnati
+                        </span>
+                      </div>
+                      <section className="today-section projects-panel">
+                        {renderProjectList(personalProjects)}
+                      </section>
+                    </div>
                   </div>
-                  <section className="today-section projects-panel">
-                    {renderProjectList(personalProjects)}
-                  </section>
-                </div>
-              </div>
+                )}
+              </>
             )}
             {deleteErr ? (
               <p className="text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl mt-3">
@@ -444,6 +494,11 @@ export default function ProjectsPage() {
           </div>
         </div>
       </main>
+      {isMobile ? (
+        <div className="mobile-bottom-switcher-shell">
+          <div className="mobile-bottom-switcher">{typeSwitcher}</div>
+        </div>
+      ) : null}
 
       {createTypeOpen ? (
         <div
