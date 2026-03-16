@@ -175,6 +175,36 @@ export default function HomePage() {
     return map;
   }, [deadlines]);
   const activeDay = days[activeDayIndex] ?? days[0] ?? null;
+  const previousDay = useMemo(() => {
+    const labels = ["Lun", "Mar", "Mer", "Gio", "Ven"];
+    let index = activeDayIndex - 1;
+    let baseWeekStart = weekStart;
+    if (index < 0) {
+      index = 4;
+      baseWeekStart = addDays(weekStart, -7);
+    }
+    const date = formatISODate(addDays(baseWeekStart, index));
+    return {
+      id: `prev-${date}`,
+      label: labels[index],
+      date,
+    };
+  }, [activeDayIndex, weekStart]);
+  const nextDay = useMemo(() => {
+    const labels = ["Lun", "Mar", "Mer", "Gio", "Ven"];
+    let index = activeDayIndex + 1;
+    let baseWeekStart = weekStart;
+    if (index > 4) {
+      index = 0;
+      baseWeekStart = addDays(weekStart, 7);
+    }
+    const date = formatISODate(addDays(baseWeekStart, index));
+    return {
+      id: `next-${date}`,
+      label: labels[index],
+      date,
+    };
+  }, [activeDayIndex, weekStart]);
 
   useEffect(() => {
     let active = true;
@@ -697,6 +727,7 @@ export default function HomePage() {
   const mobileDayDeadlines = activeDay ? deadlinesByDay.get(activeDay.date) ?? [] : [];
   const isActiveDayToday = activeDay?.date === today;
   const isActiveDayPast = activeDay ? activeDay.date < today : false;
+  const isOnToday = isActiveDayToday;
   const homeContextHintOptions = useMemo(() => {
     if (loadingPlanning) return [];
     const todayTasks = tasks.filter((task) => task.work_days?.includes(today)).length;
@@ -764,7 +795,13 @@ export default function HomePage() {
   return (
     <>
       <Nav />
-      <main className="min-h-screen px-2 sm:px-3 lg:px-4 py-6 app-page">
+      <main
+        className={
+          isMobile
+            ? "min-h-screen px-2 py-2 app-page app-page-mobile-home"
+            : "min-h-screen px-2 sm:px-3 lg:px-4 py-6 app-page"
+        }
+      >
         <div className="app-shell home-shell p-2 sm:p-3">
           {isAuthed ? (
             <>
@@ -782,8 +819,9 @@ export default function HomePage() {
                       type="button"
                       className="mobile-home-today-btn"
                       onClick={goToToday}
+                      disabled={isOnToday}
                     >
-                      Oggi
+                      Task di oggi
                     </button>
                   </div>
                   <section className="p-0">
@@ -809,6 +847,17 @@ export default function HomePage() {
                         onTouchStart={handleDayTouchStart}
                         onTouchEnd={handleDayTouchEnd}
                       >
+                        <div
+                          className="glass-panel week-column mobile-day-peek"
+                          aria-hidden="true"
+                        >
+                          <div className="week-column-header">
+                            <p className="week-column-label">{previousDay.label}</p>
+                            <span className="week-column-date">
+                              {formatDisplayDate(previousDay.date)}
+                            </span>
+                          </div>
+                        </div>
                         <div
                           className={
                             "glass-panel week-column mobile-day-card " +
@@ -859,23 +908,21 @@ export default function HomePage() {
                                   <ListRow
                                     key={task.id}
                                     className={`list-row-compact list-row-stack week-task mobile-week-task priority-card priority-card-${priorityMeta.tone}`}
+                                    onPointerDown={(event) => {
+                                      if (event.pointerType !== "touch") return;
+                                      startTaskLongPress(task);
+                                    }}
+                                    onPointerUp={(event) => {
+                                      if (event.pointerType !== "touch") return;
+                                      cancelTaskLongPress();
+                                    }}
+                                    onPointerCancel={cancelTaskLongPress}
+                                    onPointerLeave={cancelTaskLongPress}
+                                    onClick={() => handleTaskTap(task)}
                                   >
-                                    <button
-                                      type="button"
-                                      className="text-sm week-task-title week-task-title-btn"
-                                      onPointerDown={(event) => {
-                                        if (event.pointerType !== "touch") return;
-                                        startTaskLongPress(task);
-                                      }}
-                                      onPointerUp={(event) => {
-                                        if (event.pointerType !== "touch") return;
-                                        cancelTaskLongPress();
-                                      }}
-                                      onPointerCancel={cancelTaskLongPress}
-                                      onClick={() => handleTaskTap(task)}
-                                    >
+                                    <p className="text-sm week-task-title week-task-title-btn">
                                       {task.title}
-                                    </button>
+                                    </p>
                                     <div className="flex flex-wrap items-center week-task-meta">
                                       <span className="meta-line week-task-type">
                                         {typeMeta.emoji}
@@ -891,6 +938,17 @@ export default function HomePage() {
                           ) : (
                             <p className="week-column-state">Nessun task pianificato.</p>
                           )}
+                        </div>
+                        <div
+                          className="glass-panel week-column mobile-day-peek"
+                          aria-hidden="true"
+                        >
+                          <div className="week-column-header">
+                            <p className="week-column-label">{nextDay.label}</p>
+                            <span className="week-column-date">
+                              {formatDisplayDate(nextDay.date)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     )}

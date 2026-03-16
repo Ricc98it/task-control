@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Nav from "@/components/Nav";
 import Button from "@/components/Button";
+import Icon from "@/components/Icon";
 import ListRow from "@/components/ListRow";
 import Select from "@/components/Select";
 import SkeletonList from "@/components/SkeletonList";
@@ -205,11 +206,15 @@ export default function AllTasksPage() {
       <Nav />
       <main
         className={`min-h-screen px-6 py-6 app-page ${
-          isMobile ? "app-page-mobile-switcher" : ""
+          isMobile ? "app-page-mobile-switcher app-page-mobile-tasks" : ""
         }`.trim()}
       >
-        <div className="app-shell max-w-5xl mx-auto px-6 pb-8 pt-3 sm:px-8 sm:pb-10 sm:pt-4">
-          <div className="tasks-toolbar">
+        <div
+          className={`app-shell max-w-5xl mx-auto px-6 pb-8 pt-3 sm:px-8 sm:pb-10 sm:pt-4 ${
+            isMobile ? "tasks-page-shell tasks-page-shell-mobile" : ""
+          }`.trim()}
+        >
+          <div className={`tasks-toolbar ${isMobile ? "tasks-toolbar-mobile" : ""}`.trim()}>
             {!isMobile ? (
               <div className="tasks-main-switch-wrap">{typeSwitcher}</div>
             ) : null}
@@ -255,7 +260,11 @@ export default function AllTasksPage() {
           {loading ? (
             <SkeletonList rows={5} />
           ) : (
-            <div className="tasks-list-shell">
+            <div
+              className={`tasks-list-shell ${
+                isMobile ? "tasks-list-shell-mobile" : ""
+              }`.trim()}
+            >
               {tasks.length === 0 ? (
                 <div className="tasks-empty-state">
                   <p className="meta-line">Nessun task qui.</p>
@@ -282,7 +291,9 @@ export default function AllTasksPage() {
                     return (
                       <ListRow
                         key={task.id}
-                        className="list-row-compact list-row-start task-row-slim"
+                        className={`list-row-compact list-row-start task-row-slim ${
+                          isMobile ? "task-row-mobile-actions" : ""
+                        }`.trim()}
                       >
                         <div className="flex items-center justify-between gap-3 w-full">
                           <div className="min-w-0 task-row-copy">
@@ -297,25 +308,49 @@ export default function AllTasksPage() {
                             <p className="meta-line mt-1">{meta}</p>
                           </div>
 
-                          <div className="task-row-actions stretched-guard">
-                            <Button
-                              variant="tertiary"
-                              size="sm"
-                              onClick={() => setEditingTask(task)}
-                            >
-                              Modifica
-                            </Button>
-                            <button
-                              type="button"
-                              className="task-complete-btn"
-                              disabled={markingId === task.id}
-                              onClick={() => setCompleteTarget(task)}
-                              aria-label={`Completa ${task.title}`}
-                              title="Completa"
-                            >
-                              Completa
-                            </button>
-                          </div>
+                          {isMobile ? (
+                            <div className="task-row-icon-actions stretched-guard">
+                              <button
+                                type="button"
+                                className="task-row-icon-btn task-row-icon-btn-edit"
+                                onClick={() => setEditingTask(task)}
+                                aria-label={`Modifica ${task.title}`}
+                                title="Modifica"
+                              >
+                                <Icon name="edit" size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                className="task-row-icon-btn task-row-icon-btn-complete"
+                                disabled={markingId === task.id}
+                                onClick={() => setCompleteTarget(task)}
+                                aria-label={`Completa ${task.title}`}
+                                title="Completa"
+                              >
+                                <Icon name="check" size={15} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="task-row-actions stretched-guard">
+                              <Button
+                                variant="tertiary"
+                                size="sm"
+                                onClick={() => setEditingTask(task)}
+                              >
+                                Modifica
+                              </Button>
+                              <button
+                                type="button"
+                                className="task-complete-btn"
+                                disabled={markingId === task.id}
+                                onClick={() => setCompleteTarget(task)}
+                                aria-label={`Completa ${task.title}`}
+                                title="Completa"
+                              >
+                                Completa
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </ListRow>
                     );
@@ -326,7 +361,7 @@ export default function AllTasksPage() {
           )}
         </div>
       </main>
-      {isMobile ? (
+      {isMobile && !editingTask ? (
         <div className="mobile-bottom-switcher-shell">
           <div className="mobile-bottom-switcher">{typeSwitcher}</div>
         </div>

@@ -336,21 +336,35 @@ export default function TaskWizardModal({
     handleNextStep();
   }
 
-  function handleSwipeStart(event: TouchEvent<HTMLFormElement>) {
+  function resetSwipeState() {
+    swipeStartXRef.current = null;
+    swipeStartYRef.current = null;
+  }
+
+  function handleSwipeStart(event: TouchEvent<HTMLDivElement>) {
     if (!isMobile || saving) return;
+    if (document.querySelector(".date-overlay, .select-menu")) return;
     const touch = event.touches[0];
     if (!touch) return;
     swipeStartXRef.current = touch.clientX;
     swipeStartYRef.current = touch.clientY;
   }
 
-  function handleSwipeEnd(event: TouchEvent<HTMLFormElement>) {
+  function handleSwipeMove(event: TouchEvent<HTMLDivElement>) {
+    if (!isMobile || saving) return;
+    if (swipeStartXRef.current === null || swipeStartYRef.current === null) return;
+    if (document.querySelector(".date-overlay, .select-menu")) return;
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+  }
+
+  function handleSwipeEnd(event: TouchEvent<HTMLDivElement>) {
     if (!isMobile || saving) return;
     const touch = event.changedTouches[0];
     const startX = swipeStartXRef.current;
     const startY = swipeStartYRef.current;
-    swipeStartXRef.current = null;
-    swipeStartYRef.current = null;
+    resetSwipeState();
     if (!touch || startX === null || startY === null) return;
     if (document.querySelector(".date-overlay, .select-menu")) return;
 
@@ -367,15 +381,27 @@ export default function TaskWizardModal({
     }
   }
 
+  function handleSwipeCancel() {
+    resetSwipeState();
+  }
+
   if (!open) return null;
 
   return (
-    <div className="modal-overlay">
+    <div
+      className={`modal-overlay ${isMobile ? "wizard-overlay-mobile" : ""}`.trim()}
+      onTouchStart={handleSwipeStart}
+      onTouchMove={handleSwipeMove}
+      onTouchEnd={handleSwipeEnd}
+      onTouchCancel={handleSwipeCancel}
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-wizard-title"
-        className={`wizard-modal wizard-modal-step-${step}`}
+        className={`wizard-modal wizard-modal-step-${step} ${
+          isMobile ? "wizard-modal-mobile" : ""
+        }`.trim()}
       >
         <div className="wizard-body">
           <div className="wizard-main">
@@ -389,38 +415,34 @@ export default function TaskWizardModal({
               </div>
             </div>
 
-            <div className="wizard-step-nav" aria-label="Navigazione wizard">
-              {step > 1 ? (
+            {!isMobile ? (
+              <div className="wizard-step-nav" aria-label="Navigazione wizard">
+                {step > 1 ? (
+                  <button
+                    type="button"
+                    className="week-side-arrow wizard-nav-arrow wizard-nav-arrow-left"
+                    aria-label="Step precedente"
+                    onClick={handlePrevStep}
+                    disabled={saving}
+                  >
+                    <Icon name="arrow-left" size={22} />
+                  </button>
+                ) : (
+                  <span className="wizard-nav-spacer" aria-hidden="true" />
+                )}
                 <button
                   type="button"
-                  className="week-side-arrow wizard-nav-arrow wizard-nav-arrow-left"
-                  aria-label="Step precedente"
-                  onClick={handlePrevStep}
+                  className="week-side-arrow wizard-nav-arrow wizard-nav-arrow-right"
+                  aria-label={step === 3 ? "Conferma task" : "Step successivo"}
+                  onClick={() => formRef.current?.requestSubmit()}
                   disabled={saving}
                 >
-                  <Icon name="arrow-left" size={22} />
+                  <Icon name={step === 3 ? "check" : "arrow-right"} size={22} />
                 </button>
-              ) : (
-                <span className="wizard-nav-spacer" aria-hidden="true" />
-              )}
-              <button
-                type="button"
-                className="week-side-arrow wizard-nav-arrow wizard-nav-arrow-right"
-                aria-label={step === 3 ? "Conferma task" : "Step successivo"}
-                onClick={() => formRef.current?.requestSubmit()}
-                disabled={saving}
-              >
-                <Icon name={step === 3 ? "check" : "arrow-right"} size={22} />
-              </button>
-            </div>
+              </div>
+            ) : null}
 
-            <form
-              ref={formRef}
-              onSubmit={handleSubmit}
-              className="wizard-modal-form"
-              onTouchStart={handleSwipeStart}
-              onTouchEnd={handleSwipeEnd}
-            >
+            <form ref={formRef} onSubmit={handleSubmit} className="wizard-modal-form">
               {step === 1 ? (
                 <div className="wizard-step wizard-step-intro">
                   <div className="wizard-primary-row wizard-title-row">
@@ -431,7 +453,6 @@ export default function TaskWizardModal({
                       }`.trim()}
                       value={title}
                       onChange={(event) => setTitle(event.target.value)}
-                      autoFocus
                       aria-label="Titolo task"
                     />
                   </div>
@@ -526,7 +547,6 @@ export default function TaskWizardModal({
                       value={notes}
                       onChange={(event) => setNotes(event.target.value)}
                       placeholder="Note (opzionali)"
-                      autoFocus
                       aria-label="Note task"
                     />
                   </div>
@@ -562,6 +582,15 @@ export default function TaskWizardModal({
                     🏡 Personale
                   </button>
                 </div>
+                {isMobile && step === 3 ? (
+                  <button
+                    type="submit"
+                    className="wizard-mobile-submit"
+                    disabled={saving}
+                  >
+                    {saving ? "Salvo..." : "Crea task"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="wizard-cancel-link"

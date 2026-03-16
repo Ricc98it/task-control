@@ -5,6 +5,7 @@ type IconName =
   | "inbox"
   | "calendar"
   | "check"
+  | "edit"
   | "arrow-left"
   | "arrow-right"
   | "list"
@@ -56,6 +57,13 @@ export default function Icon({ name, size = 18, className }: IconProps) {
       return (
         <svg {...common}>
           <path d="M5 12l4 4L19 7" />
+        </svg>
+      );
+    case "edit":
+      return (
+        <svg {...common}>
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" />
         </svg>
       );
     case "arrow-left":

@@ -171,7 +171,6 @@ export default function TaskEditModal({
               onChange={(event) => setTitle(event.target.value)}
               aria-label="Titolo task"
               placeholder="Titolo task"
-              autoFocus
             />
 
             <div className="wizard-step-details wizard-grid task-edit-grid">
