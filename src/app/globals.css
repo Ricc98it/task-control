@@ -1859,10 +1859,16 @@ body.wizard-open-mobile .mobile-bottom-switcher-shell {
   box-shadow: none;
 }
 
+.mobile-bottom-switcher .tasks-main-switch {
+  margin: 0;
+}
+
 .mobile-bottom-switcher .wizard-type-btn {
   flex: 1 1 0;
   min-width: 0;
-  padding: 11px 10px;
+  min-height: 46px;
+  padding: 10px 10px;
+  font-size: 14px;
 }
 
 @media (min-width: 1024px) {
@@ -3470,7 +3476,7 @@ body.mobile-app-locked {
   }
 
   .app-page-mobile-switcher {
-    padding-bottom: calc(172px + env(safe-area-inset-bottom));
+    padding-bottom: calc(100px + env(safe-area-inset-bottom));
   }
 
   .app-page-mobile-home {

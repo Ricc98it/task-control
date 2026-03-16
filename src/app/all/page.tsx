@@ -170,7 +170,7 @@ export default function AllTasksPage() {
 
   const typeSwitcher = (
     <div
-      className="wizard-type-switch project-type-switch tasks-main-switch"
+      className="wizard-type-switch tasks-main-switch"
       role="tablist"
       aria-label="Tipo task"
     >
