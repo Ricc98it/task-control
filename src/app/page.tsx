@@ -1219,7 +1219,8 @@ export default function HomePage() {
               confirmLabel="✓"
               placeholder="Quando ci lavori?"
               ariaLabel="Nuovi giorni di lavoro"
-              wrapperClassName="mobile-move-date"
+              wrapperClassName="mobile-move-date wizard-control-date"
+              inputClassName="wizard-control-input"
             />
             <button
               type="button"
@@ -1255,7 +1256,8 @@ export default function HomePage() {
               onChange={setMovingDeadlineDate}
               placeholder="Nuova scadenza"
               ariaLabel="Nuova scadenza"
-              wrapperClassName="mobile-move-date"
+              wrapperClassName="mobile-move-date wizard-control-date"
+              inputClassName="wizard-control-input"
             />
             <div className="app-confirm-actions mobile-move-actions">
               <button
