@@ -3381,6 +3381,27 @@ body.mobile-app-locked {
 }
 
 @media (max-width: 900px) {
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: #070b13;
+  }
+
+  body {
+    position: fixed;
+    inset: 0;
+  }
+
+  .page-stack {
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
   .app-page {
     padding-bottom: calc(90px + env(safe-area-inset-bottom));
   }
