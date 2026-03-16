@@ -402,7 +402,7 @@ export default function ProjectsPage() {
       <Nav />
       <main
         className={`min-h-screen px-6 py-6 app-page ${
-          isMobile ? "app-page-mobile-switcher" : ""
+          isMobile ? "app-page-mobile-switcher app-page-mobile-projects" : ""
         }`.trim()}
       >
         <div className="app-shell today-shell projects-shell max-w-5xl mx-auto px-6 pb-8 pt-3 sm:px-8 sm:pb-10 sm:pt-4">
