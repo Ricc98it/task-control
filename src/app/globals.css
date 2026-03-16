@@ -150,6 +150,12 @@ a:hover {
   margin-inline: 0 !important;
 }
 
+.app-shell.auth-card-shell {
+  width: min(520px, 100%) !important;
+  max-width: 520px !important;
+  margin-inline: auto !important;
+}
+
 .glass-panel {
   background: var(--surface-soft);
   border: 1px solid var(--border);

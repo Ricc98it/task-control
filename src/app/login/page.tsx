@@ -81,7 +81,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
-      <div className="app-shell w-full max-w-sm p-6 sm:p-7">
+      <div className="app-shell auth-card-shell w-full p-6 sm:p-7">
         <div className="text-center">
           <h1 className="page-title">Accedi</h1>
           <p className="page-subtitle">
