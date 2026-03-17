@@ -34,3 +34,45 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Google Calendar bridge (MVP backend)
+
+The project now includes server endpoints to connect a user account to Google Calendar and sync events (including Google Meet links) into Supabase.
+
+### Required environment variables
+
+Add these values to your `.env.local`:
+
+```bash
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/integrations/google/callback
+GOOGLE_OAUTH_STATE_SECRET=long-random-secret
+SUPABASE_SERVICE_ROLE_KEY=...
+# Optional, defaults to request origin
+APP_URL=http://localhost:3000
+```
+
+### New API endpoints
+
+- `POST /api/integrations/google/connect`
+  - Auth: `Authorization: Bearer <supabase_access_token>`
+  - Returns `authorizationUrl`
+- `GET /api/integrations/google/callback`
+  - OAuth callback endpoint for Google
+- `GET /api/integrations/google/status`
+  - Auth required, returns current integration status
+- `POST /api/integrations/google/sync`
+  - Auth required
+  - Optional JSON body: `{ "forceFullSync": true }`
+
+### Supabase migrations
+
+- `006_add_google_calendar_bridge.sql`
+  - `calendar_integrations`
+  - `external_calendar_events`
+  - `task_external_links`
+- `007_add_workspaces_foundation.sql`
+  - `workspaces`
+  - `workspace_members`
+  - `workspace_id` on `tasks` and `projects`
