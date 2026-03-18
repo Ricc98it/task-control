@@ -6,6 +6,8 @@ type IconName =
   | "calendar"
   | "check"
   | "edit"
+  | "trash"
+  | "user-plus"
   | "arrow-left"
   | "arrow-right"
   | "list"
@@ -64,6 +66,23 @@ export default function Icon({ name, size = 18, className }: IconProps) {
         <svg {...common}>
           <path d="M12 20h9" />
           <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" />
+        </svg>
+      );
+    case "trash":
+      return (
+        <svg {...common}>
+          <path d="M3 6h18" />
+          <path d="M8 6V4h8v2" />
+          <path d="M6 6l1 14h10l1-14" />
+          <path d="M10 10v7M14 10v7" />
+        </svg>
+      );
+    case "user-plus":
+      return (
+        <svg {...common}>
+          <path d="M20 8v6M17 11h6" />
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 19.2a5.5 5.5 0 0 1 11 0" />
         </svg>
       );
     case "arrow-left":

@@ -26,9 +26,9 @@ import {
 } from "@/lib/tasks";
 
 const PLAN_FILTER_OPTIONS = [
-  { value: "ALL", label: "Pianifica" },
-  { value: "OPEN", label: "Pianificati" },
-  { value: "INBOX", label: "Da pianificare" },
+  { value: "TODO", label: "Da fare" },
+  { value: "DONE", label: "Completati" },
+  { value: "ALL", label: "Tutti" },
 ] as const;
 
 export default function AllTasksPage() {
@@ -42,7 +42,7 @@ export default function AllTasksPage() {
   const [activeType, setActiveType] = useState<TaskType>("WORK");
   const [priorityFilter, setPriorityFilter] = useState<"ALL" | TaskPriority>("ALL");
   const [projectFilter, setProjectFilter] = useState<string>("ALL");
-  const [planFilter, setPlanFilter] = useState<"ALL" | "OPEN" | "INBOX">("ALL");
+  const [planFilter, setPlanFilter] = useState<"TODO" | "DONE" | "ALL">("TODO");
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [completeTarget, setCompleteTarget] = useState<Task | null>(null);
@@ -103,14 +103,15 @@ export default function AllTasksPage() {
       .select(
         "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name,type)"
       )
-      .in("status", ["OPEN", "INBOX"])
       .eq("type", activeType)
       .order("priority", { ascending: true, nullsFirst: false })
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("title", { ascending: true });
 
-    if (planFilter !== "ALL") {
-      taskQuery = taskQuery.eq("status", planFilter);
+    if (planFilter === "TODO") {
+      taskQuery = taskQuery.in("status", ["OPEN", "INBOX"]);
+    } else if (planFilter === "DONE") {
+      taskQuery = taskQuery.eq("status", "DONE");
     }
     if (priorityFilter !== "ALL") {
       taskQuery = taskQuery.eq("priority", priorityFilter);
@@ -151,7 +152,11 @@ export default function AllTasksPage() {
     setErr(null);
     setMarkingId(task.id);
 
-    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
+    const payload: Pick<Task, "status" | "work_days"> = {
+      status: "DONE",
+      work_days: null,
+    };
+    const { error } = await supabase.from("tasks").update(payload).eq("id", task.id);
 
     setMarkingId(null);
     if (error) {
@@ -159,7 +164,14 @@ export default function AllTasksPage() {
       return;
     }
 
-    setTasks((prev) => prev.filter((item) => item.id !== task.id));
+    setTasks((prev) => {
+      if (planFilter === "TODO") {
+        return prev.filter((item) => item.id !== task.id);
+      }
+      return prev.map((item) =>
+        item.id === task.id ? { ...item, status: "DONE", work_days: null } : item
+      );
+    });
     emitTasksUpdated();
   }
 
@@ -240,13 +252,13 @@ export default function AllTasksPage() {
               />
               <Select
                 value={planFilter}
-                onChange={(next) => setPlanFilter(next as "ALL" | "OPEN" | "INBOX")}
+                onChange={(next) => setPlanFilter(next as "TODO" | "DONE" | "ALL")}
                 options={PLAN_FILTER_OPTIONS.map((option) => ({
                   value: option.value,
                   label: option.label,
                 }))}
-                placeholder="Pianifica"
-                ariaLabel="Pianifica"
+                placeholder="Da fare"
+                ariaLabel="Stato task"
               />
             </div>
           </div>
@@ -277,7 +289,9 @@ export default function AllTasksPage() {
                     const workDaysLabel =
                       workDaysCount === 1 ? "Giorno di lavoro" : "Giorni di lavoro";
                     const planMeta =
-                      task.status === "INBOX"
+                      task.status === "DONE"
+                        ? "Stato: Completato"
+                        : task.status === "INBOX"
                         ? `${workDaysLabel}: Da pianificare`
                         : workSummary
                         ? `${workDaysLabel}: ${workSummary}`
@@ -292,8 +306,8 @@ export default function AllTasksPage() {
                       <ListRow
                         key={task.id}
                         className={`list-row-compact list-row-start task-row-slim ${
-                          isMobile ? "task-row-mobile-actions" : ""
-                        }`.trim()}
+                          task.status === "DONE" ? "task-row-completed" : ""
+                        } ${isMobile ? "task-row-mobile-actions" : ""}`.trim()}
                       >
                         <div className="flex items-center justify-between gap-3 w-full">
                           <div className="min-w-0 task-row-copy">
@@ -306,6 +320,11 @@ export default function AllTasksPage() {
                               {task.project?.name ?? "NESSUN PROGETTO"}
                             </p>
                             <p className="meta-line mt-1">{meta}</p>
+                            {task.notes?.trim() ? (
+                              <p className="meta-line mt-1 task-note-line">
+                                {task.notes.trim()}
+                              </p>
+                            ) : null}
                           </div>
 
                           {isMobile ? (
@@ -319,16 +338,18 @@ export default function AllTasksPage() {
                               >
                                 <Icon name="edit" size={15} />
                               </button>
-                              <button
-                                type="button"
-                                className="task-row-icon-btn task-row-icon-btn-complete"
-                                disabled={markingId === task.id}
-                                onClick={() => setCompleteTarget(task)}
-                                aria-label={`Completa ${task.title}`}
-                                title="Completa"
-                              >
-                                <Icon name="check" size={15} />
-                              </button>
+                              {task.status !== "DONE" ? (
+                                <button
+                                  type="button"
+                                  className="task-row-icon-btn task-row-icon-btn-complete"
+                                  disabled={markingId === task.id}
+                                  onClick={() => setCompleteTarget(task)}
+                                  aria-label={`Completa ${task.title}`}
+                                  title="Completa"
+                                >
+                                  <Icon name="check" size={15} />
+                                </button>
+                              ) : null}
                             </div>
                           ) : (
                             <div className="task-row-actions stretched-guard">
@@ -339,16 +360,18 @@ export default function AllTasksPage() {
                               >
                                 Modifica
                               </Button>
-                              <button
-                                type="button"
-                                className="task-complete-btn"
-                                disabled={markingId === task.id}
-                                onClick={() => setCompleteTarget(task)}
-                                aria-label={`Completa ${task.title}`}
-                                title="Completa"
-                              >
-                                Completa
-                              </button>
+                              {task.status !== "DONE" ? (
+                                <button
+                                  type="button"
+                                  className="task-complete-btn"
+                                  disabled={markingId === task.id}
+                                  onClick={() => setCompleteTarget(task)}
+                                  aria-label={`Completa ${task.title}`}
+                                  title="Completa"
+                                >
+                                  Completa
+                                </button>
+                              ) : null}
                             </div>
                           )}
                         </div>

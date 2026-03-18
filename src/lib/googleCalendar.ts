@@ -44,10 +44,62 @@ export type GoogleCalendarEvent = {
   };
 };
 
+export type GoogleCalendarResponseStatus = "accepted" | "tentative" | "declined";
+
+export type GoogleCreateCalendarEventInput = {
+  summary: string;
+  description?: string;
+  location?: string;
+  start: {
+    date?: string;
+    dateTime?: string;
+    timeZone?: string;
+  };
+  end: {
+    date?: string;
+    dateTime?: string;
+    timeZone?: string;
+  };
+  attendees?: Array<{ email: string; optional?: boolean }>;
+  conferenceData?: {
+    createRequest?: {
+      requestId: string;
+      conferenceSolutionKey?: {
+        type: "hangoutsMeet";
+      };
+    };
+  };
+  transparency?: "opaque" | "transparent";
+  visibility?: "default" | "public" | "private" | "confidential";
+  guestsCanInviteOthers?: boolean;
+  guestsCanModify?: boolean;
+  guestsCanSeeOtherGuests?: boolean;
+  recurrence?: string[];
+  colorId?: string;
+  reminders?: {
+    useDefault: boolean;
+    overrides?: Array<{ method: "popup"; minutes: number }>;
+  };
+ };
+
+export type GoogleUpdateCalendarEventInput = Partial<GoogleCreateCalendarEventInput> & {
+  attendeesOmitted?: boolean;
+};
+
 type GoogleEventsListResponse = {
   items?: GoogleCalendarEvent[];
   nextPageToken?: string;
   nextSyncToken?: string;
+};
+
+type GoogleDirectoryPeopleSearchResponse = {
+  results?: Array<{
+    person?: {
+      emailAddresses?: Array<{
+        value?: string;
+      }>;
+    };
+  }>;
 };
 
 type GooglePrimaryCalendar = {
@@ -75,8 +127,12 @@ export class GoogleApiError extends Error {
 const GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_BASE_URL = "https://www.googleapis.com/calendar/v3";
+const GOOGLE_PEOPLE_BASE_URL = "https://people.googleapis.com/v1";
 const GOOGLE_DEFAULT_SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/contacts.readonly",
+  "https://www.googleapis.com/auth/directory.readonly",
 ].join(" ");
 
 function requireEnv(name: string): string {
@@ -268,3 +324,155 @@ export async function listGoogleCalendarEvents(options: {
   };
 }
 
+export async function updateGoogleCalendarEventResponseStatus(options: {
+  accessToken: string;
+  calendarId: string;
+  eventId: string;
+  attendeeEmail: string;
+  responseStatus: GoogleCalendarResponseStatus;
+}): Promise<GoogleCalendarEvent> {
+  const url = new URL(
+    `${GOOGLE_CALENDAR_BASE_URL}/calendars/${encodeURIComponent(options.calendarId)}/events/${encodeURIComponent(options.eventId)}`
+  );
+  url.searchParams.set("sendUpdates", "none");
+
+  return fetchGoogleJson<GoogleCalendarEvent>(url.toString(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${options.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      attendeesOmitted: true,
+      attendees: [
+        {
+          email: options.attendeeEmail,
+          responseStatus: options.responseStatus,
+        },
+      ],
+    }),
+  });
+}
+
+export async function createGoogleCalendarEvent(options: {
+  accessToken: string;
+  calendarId: string;
+  event: GoogleCreateCalendarEventInput;
+  sendUpdates?: "all" | "externalOnly" | "none";
+  conferenceDataVersion?: 0 | 1;
+}): Promise<GoogleCalendarEvent> {
+  const url = new URL(
+    `${GOOGLE_CALENDAR_BASE_URL}/calendars/${encodeURIComponent(options.calendarId)}/events`
+  );
+
+  url.searchParams.set("sendUpdates", options.sendUpdates ?? "all");
+  if (options.conferenceDataVersion !== undefined) {
+    url.searchParams.set("conferenceDataVersion", String(options.conferenceDataVersion));
+  }
+
+  return fetchGoogleJson<GoogleCalendarEvent>(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${options.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(options.event),
+  });
+}
+
+export async function updateGoogleCalendarEvent(options: {
+  accessToken: string;
+  calendarId: string;
+  eventId: string;
+  event: GoogleUpdateCalendarEventInput;
+  sendUpdates?: "all" | "externalOnly" | "none";
+  conferenceDataVersion?: 0 | 1;
+}): Promise<GoogleCalendarEvent> {
+  const url = new URL(
+    `${GOOGLE_CALENDAR_BASE_URL}/calendars/${encodeURIComponent(options.calendarId)}/events/${encodeURIComponent(options.eventId)}`
+  );
+
+  url.searchParams.set("sendUpdates", options.sendUpdates ?? "all");
+  if (options.conferenceDataVersion !== undefined) {
+    url.searchParams.set("conferenceDataVersion", String(options.conferenceDataVersion));
+  }
+
+  return fetchGoogleJson<GoogleCalendarEvent>(url.toString(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${options.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(options.event),
+  });
+}
+
+export async function deleteGoogleCalendarEvent(options: {
+  accessToken: string;
+  calendarId: string;
+  eventId: string;
+  sendUpdates?: "all" | "externalOnly" | "none";
+}): Promise<void> {
+  const url = new URL(
+    `${GOOGLE_CALENDAR_BASE_URL}/calendars/${encodeURIComponent(options.calendarId)}/events/${encodeURIComponent(options.eventId)}`
+  );
+  url.searchParams.set("sendUpdates", options.sendUpdates ?? "all");
+
+  const response = await fetch(url.toString(), {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${options.accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await parseJsonSafe(response);
+    throw new GoogleApiError(
+      `Google API request failed with status ${response.status}.`,
+      response.status,
+      body
+    );
+  }
+}
+
+function normalizeEmail(value: string | null | undefined): string | null {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return null;
+  return normalized;
+}
+
+export async function searchGoogleDirectoryPeople(options: {
+  accessToken: string;
+  query: string;
+  pageSize?: number;
+}): Promise<string[]> {
+  const query = options.query.trim();
+  if (query.length < 2) return [];
+
+  const url = `${GOOGLE_PEOPLE_BASE_URL}/people:searchDirectoryPeople`;
+  const response = await fetchGoogleJson<GoogleDirectoryPeopleSearchResponse>(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${options.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query,
+      readMask: "emailAddresses",
+      sources: ["DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE"],
+      pageSize: Math.max(1, Math.min(options.pageSize ?? 30, 100)),
+    }),
+  });
+
+  const emails = new Set<string>();
+  for (const result of response.results ?? []) {
+    for (const emailAddress of result.person?.emailAddresses ?? []) {
+      const normalized = normalizeEmail(emailAddress.value);
+      if (normalized) {
+        emails.add(normalized);
+      }
+    }
+  }
+  return Array.from(emails);
+}

@@ -15,24 +15,34 @@ type FlowCard = {
   href: string;
   label: string;
   key?: SummaryKey;
-  variant?: "home";
+  variant?: "icon" | "metric";
+  emoji?: string;
 };
 
 const flowBoard: FlowCard[] = [
   {
     href: "/",
-    label: "🏠 Home",
-    variant: "home",
+    label: "Home",
+    variant: "icon",
+    emoji: "🏠",
+  },
+  {
+    href: "/calls",
+    label: "Call",
+    variant: "icon",
+    emoji: "🗓️",
   },
   {
     href: "/all",
     label: "Task",
     key: "overdue",
+    variant: "metric",
   },
   {
     href: "/projects",
     label: "Progetti",
     key: "projects",
+    variant: "metric",
   },
 ];
 
@@ -47,6 +57,9 @@ function resolveActiveFlow(pathname: string | null) {
     pathname.startsWith("/task")
   ) {
     return "/all";
+  }
+  if (pathname.startsWith("/calls")) {
+    return "/calls";
   }
   if (pathname.startsWith("/projects")) {
     return "/projects";
@@ -232,23 +245,23 @@ export default function Nav() {
             {flowBoard.map((item) => {
               const count = item.key ? summary?.[item.key] ?? 0 : 0;
               const isActive = activeFlow === item.href;
-              const isHome = item.variant === "home";
+              const isIcon = item.variant === "icon";
 
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   aria-current={isActive ? "page" : undefined}
-                  aria-label={isHome ? "Home" : item.label}
+                  aria-label={item.label}
                   className={
                     "mobile-nav-link " +
                     (isActive ? "mobile-nav-link-active " : "")
                   }
                 >
                   <span className="mobile-nav-label">
-                    {isHome ? "🏠" : item.label}
+                    {isIcon ? item.emoji : item.label}
                   </span>
-                  {!isHome ? (
+                  {!isIcon ? (
                     <span className="mobile-nav-count">
                       {sessionState === "authed" && item.key ? count : "-"}
                     </span>
@@ -270,6 +283,17 @@ export default function Nav() {
                 >
                   +
                 </button>
+                <Link
+                  href="/settings"
+                  className={`mobile-nav-link ${
+                    pathname?.startsWith("/settings") ? "mobile-nav-link-active" : ""
+                  }`}
+                  aria-current={pathname?.startsWith("/settings") ? "page" : undefined}
+                  aria-label="Impostazioni"
+                  title="Impostazioni"
+                >
+                  ⚙️
+                </Link>
                 <button
                   type="button"
                   className="mobile-nav-link"
@@ -293,19 +317,19 @@ export default function Nav() {
                   const count = item.key ? summary?.[item.key] ?? 0 : 0;
                   const isAlert = item.key === "overdue" && count > 0;
                   const isActive = activeFlow === item.href;
-                  if (item.variant === "home") {
+                  if (item.variant === "icon") {
                     return (
                       <Link
                         key={item.href}
                         href={item.href}
                         aria-current={isActive ? "page" : undefined}
-                        aria-label="Home"
+                        aria-label={item.label}
                         className={
                           "flow-card flow-card-home " +
                           (isActive ? "flow-card-active" : "")
                         }
                       >
-                        <span className="flow-card-home-emoji">🏠</span>
+                        <span className="flow-card-home-emoji">{item.emoji}</span>
                       </Link>
                     );
                   }
@@ -316,7 +340,6 @@ export default function Nav() {
                       aria-current={isActive ? "page" : undefined}
                       className={
                         "flow-card flow-card-main " +
-                        (item.variant === "home" ? "flow-card-home " : "") +
                         (isAlert ? "border-rose-400/40 " : "") +
                         (isActive ? "flow-card-active" : "")
                       }
@@ -336,9 +359,20 @@ export default function Nav() {
                 })}
                 {sessionState === "authed" && (
                   <div className="nav-logout">
+                    <Link
+                      href="/settings"
+                      className={`flow-card flow-card-home nav-logout-button nav-utility-button ${
+                        pathname?.startsWith("/settings") ? "flow-card-active" : ""
+                      }`}
+                      aria-current={pathname?.startsWith("/settings") ? "page" : undefined}
+                      aria-label="Impostazioni"
+                      title="Impostazioni"
+                    >
+                      <span className="flow-card-home-emoji">⚙️</span>
+                    </Link>
                     <button
                       type="button"
-                      className="flow-card flow-card-home nav-logout-button"
+                      className="flow-card flow-card-home nav-logout-button nav-utility-button"
                       onClick={() => setLogoutConfirmOpen(true)}
                       disabled={loggingOut}
                       aria-label="Logout"

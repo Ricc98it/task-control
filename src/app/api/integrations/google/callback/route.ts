@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     const payload = {
       user_id: statePayload.userId,
       provider: "GOOGLE",
-      provider_account_email: primaryCalendar.summary,
+      provider_account_email: primaryCalendar.calendarId || primaryCalendar.summary,
       calendar_id: primaryCalendar.calendarId,
       access_token: tokenResponse.accessToken,
       refresh_token: refreshToken,

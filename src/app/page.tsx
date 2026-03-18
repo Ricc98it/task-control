@@ -539,7 +539,11 @@ export default function HomePage() {
     if (completingId) return;
     setPlanningErr(null);
     setCompletingId(task.id);
-    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
+    const payload: Pick<Task, "status" | "work_days"> = {
+      status: "DONE",
+      work_days: null,
+    };
+    const { error } = await supabase.from("tasks").update(payload).eq("id", task.id);
     setCompletingId(null);
 
     if (error) {
@@ -1325,6 +1329,16 @@ export default function HomePage() {
                 {completingId === taskActionTarget.id ? "Completo..." : "Completa"}
               </button>
             </div>
+            {taskActionTarget.notes?.trim() ? (
+              <div className="week-task-action-notes-block">
+                <p className="week-task-action-notes-label">Note</p>
+                <div className="week-task-action-notes">
+                  <p className="week-task-action-notes-text">
+                    {taskActionTarget.notes.trim()}
+                  </p>
+                </div>
+              </div>
+            ) : null}
             <button
               type="button"
               className="project-type-cancel"

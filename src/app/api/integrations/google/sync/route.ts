@@ -22,6 +22,34 @@ type CalendarIntegrationRow = {
   sync_token: string | null;
 };
 
+function getReadableSyncErrorMessage(error: unknown): string {
+  if (error instanceof GoogleApiError) {
+    const body = error.body as
+      | {
+          error_description?: string;
+          error?: string | { message?: string };
+          message?: string;
+        }
+      | null;
+
+    const detailed =
+      body?.error_description ??
+      (typeof body?.error === "string"
+        ? body.error
+        : body?.error?.message ?? body?.message ?? null);
+
+    if (error.status === 401) {
+      return detailed
+        ? `Google authorization failed (401): ${detailed}. Reconnect the integration.`
+        : "Google authorization failed (401). Reconnect the integration.";
+    }
+
+    return detailed ? `${error.message} ${detailed}` : error.message;
+  }
+
+  return error instanceof Error ? error.message : "Google calendar sync failed.";
+}
+
 function normalizeDateTime(value?: string | null): string | null {
   if (!value) return null;
   const date = new Date(value);
@@ -318,8 +346,32 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const message =
-        error instanceof Error ? error.message : "Google calendar sync failed.";
+      let finalError: unknown = error;
+      if (
+        error instanceof GoogleApiError &&
+        error.status === 401 &&
+        integrationRow.refresh_token
+      ) {
+        try {
+          const retryResult = await runSync({
+            integration: {
+              ...integrationRow,
+              access_token: null,
+              token_expires_at: null,
+            },
+            forceFullSync,
+          });
+          return NextResponse.json({
+            ok: true,
+            accessTokenRefreshed: true,
+            ...retryResult,
+          });
+        } catch (retryError) {
+          finalError = retryError;
+        }
+      }
+
+      const message = getReadableSyncErrorMessage(finalError);
       await supabaseAdmin
         .from("calendar_integrations")
         .update({

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      connected: data.connection_status === "ACTIVE",
+      connected: true,
       provider: data.provider,
       providerAccountEmail: data.provider_account_email,
       calendarId: data.calendar_id,
@@ -53,4 +53,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
