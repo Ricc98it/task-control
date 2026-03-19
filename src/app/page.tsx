@@ -22,6 +22,11 @@ import TaskEditModal from "@/components/TaskEditModal";
 import { ensureSession } from "@/lib/autoSession";
 import { getHomeContextHints } from "@/lib/contextHints";
 import { emitTasksUpdated, onTasksUpdated } from "@/lib/taskEvents";
+import {
+  getLastTaskCompletedAt,
+  markTaskCompletedNow,
+  onTaskCompleted,
+} from "@/lib/taskCompletion";
 import { supabase } from "@/lib/supabaseClient";
 import { useIsMobile } from "@/lib/useIsMobile";
 import {
@@ -124,6 +129,8 @@ export default function HomePage() {
   );
   const [loadingPlanning, setLoadingPlanning] = useState(true);
   const [planningErr, setPlanningErr] = useState<string | null>(null);
+  const [lastTaskCompletedSignal, setLastTaskCompletedSignal] = useState<string | null>(null);
+  const [latestDoneTaskCreatedAt, setLatestDoneTaskCreatedAt] = useState<string | null>(null);
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
@@ -150,6 +157,7 @@ export default function HomePage() {
   const consumeTaskClickRef = useRef<string | null>(null);
   const consumeDeadlineClickRef = useRef<string | null>(null);
   const today = useMemo(() => todayISO(), []);
+  const yesterday = useMemo(() => formatISODate(addDays(new Date(), -1)), []);
 
   const days = useMemo<DropTarget[]>(() => {
     const labels = ["Lun", "Mar", "Mer", "Gio", "Ven"];
@@ -283,8 +291,9 @@ export default function HomePage() {
   const loadPlanningData = useCallback(async () => {
     const weekStartISO = formatISODate(weekStart);
     const weekEndISO = formatISODate(addDays(weekStart, 4));
+    const deadlineWindowStart = weekStartISO < yesterday ? weekStartISO : yesterday;
 
-    const [plannedRes, deadlineRes, projectsRes] = await Promise.all([
+    const [plannedRes, deadlineRes, projectsRes, latestDoneRes] = await Promise.all([
       supabase
         .from("tasks")
         .select(
@@ -304,13 +313,18 @@ export default function HomePage() {
         .select(
           "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name)"
         )
-        .neq("status", "DONE")
         .not("due_date", "is", null)
-        .gte("due_date", weekStartISO)
+        .gte("due_date", deadlineWindowStart)
         .lte("due_date", weekEndISO)
         .order("due_date", { ascending: true })
         .order("priority", { ascending: true, nullsFirst: false }),
       supabase.from("projects").select("id,name,type").order("name"),
+      supabase
+        .from("tasks")
+        .select("created_at")
+        .eq("status", "DONE")
+        .order("created_at", { ascending: false })
+        .limit(1),
     ]);
 
     if (plannedRes.error || deadlineRes.error || projectsRes.error) {
@@ -327,7 +341,19 @@ export default function HomePage() {
     setTasks(normalizeTasks(plannedRes.data ?? []));
     setDeadlines(normalizeTasks(deadlineRes.data ?? []));
     setProjects((projectsRes.data ?? []) as Project[]);
-  }, [weekStart]);
+    setLatestDoneTaskCreatedAt(
+      typeof latestDoneRes.data?.[0]?.created_at === "string"
+        ? latestDoneRes.data[0].created_at
+        : null
+    );
+  }, [weekStart, yesterday]);
+
+  useEffect(() => {
+    setLastTaskCompletedSignal(getLastTaskCompletedAt());
+    return onTaskCompleted((completedAtIso) => {
+      setLastTaskCompletedSignal(completedAtIso);
+    });
+  }, []);
 
   useEffect(() => {
     if (sessionState !== "authed") return;
@@ -552,8 +578,13 @@ export default function HomePage() {
     }
 
     setTasks((prev) => prev.filter((item) => item.id !== task.id));
-    setDeadlines((prev) => prev.filter((item) => item.id !== task.id));
+    setDeadlines((prev) =>
+      prev.map((item) =>
+        item.id === task.id ? { ...item, status: "DONE", work_days: null } : item
+      )
+    );
     setTaskActionTarget(null);
+    markTaskCompletedNow();
     emitTasksUpdated();
     showTaskCompletedOverlay();
   }
@@ -735,22 +766,59 @@ export default function HomePage() {
   const homeContextHintOptions = useMemo(() => {
     if (loadingPlanning) return [];
     const todayTasks = tasks.filter((task) => task.work_days?.includes(today)).length;
-    const criticalTodayTasks = tasks.filter(
-      (task) =>
-        task.work_days?.includes(today) &&
-        (task.priority === "P0" || task.priority === "P1")
-    ).length;
-    const weekDeadlines = deadlines.length;
+    const criticalTodayList = tasks
+      .filter(
+        (task) =>
+          task.work_days?.includes(today) &&
+          (task.priority === "P0" || task.priority === "P1")
+      )
+      .sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority));
+    const criticalTodayTasks = criticalTodayList.length;
+    const criticalTodayTopTaskTitle = criticalTodayList[0]?.title ?? null;
+    const weekDeadlines = deadlines.filter((task) => task.status !== "DONE").length;
     const unassignedTodayTasks = tasks.filter(
-      (task) => task.work_days?.includes(today) && !task.project?.name
+      (task) =>
+        task.work_days?.includes(today) && !task.project?.name
     ).length;
+    const overdueYesterdayList = deadlines.filter(
+      (task) => task.status !== "DONE" && task.due_date?.slice(0, 10) === yesterday
+    );
+    const overdueYesterdayDeadlines = overdueYesterdayList.length;
+    const overdueYesterdayTopTitle = overdueYesterdayList[0]?.title ?? null;
+    const monday = new Date().getDay() === 1;
+
+    const signalDate = lastTaskCompletedSignal ? new Date(lastTaskCompletedSignal) : null;
+    const latestDoneDate = latestDoneTaskCreatedAt ? new Date(latestDoneTaskCreatedAt) : null;
+    const completionReference = (() => {
+      if (signalDate && latestDoneDate) {
+        return signalDate > latestDoneDate ? signalDate : latestDoneDate;
+      }
+      return signalDate ?? latestDoneDate ?? null;
+    })();
+    const noCompletionForTwoDays =
+      completionReference !== null &&
+      Date.now() - completionReference.getTime() >= 2 * 24 * 60 * 60 * 1000;
+
     return getHomeContextHints({
       todayTasks,
       criticalTodayTasks,
+      criticalTodayTopTaskTitle,
       weekDeadlines,
       unassignedTodayTasks,
+      overdueYesterdayDeadlines,
+      overdueYesterdayTopTitle,
+      isMonday: monday,
+      noCompletionForTwoDays,
     });
-  }, [deadlines, loadingPlanning, tasks, today]);
+  }, [
+    deadlines,
+    lastTaskCompletedSignal,
+    latestDoneTaskCreatedAt,
+    loadingPlanning,
+    tasks,
+    today,
+    yesterday,
+  ]);
 
   useEffect(() => {
     if (loadingPlanning) {
@@ -884,7 +952,9 @@ export default function HomePage() {
                                 <button
                                   key={task.id}
                                   type="button"
-                                  className="deadline-chip deadline-chip-static"
+                                  className={`deadline-chip deadline-chip-static ${
+                                    task.status === "DONE" ? "deadline-chip-done" : ""
+                                  }`.trim()}
                                   onPointerDown={(event) => {
                                     if (event.pointerType !== "touch") return;
                                     startDeadlineLongPress(task);
@@ -1053,9 +1123,14 @@ export default function HomePage() {
                                       {deadlineTasks.map((task) => (
                                         <span
                                           key={task.id}
-                                          className="deadline-chip cursor-grab active:cursor-grabbing"
-                                          draggable
+                                          className={`deadline-chip ${
+                                            task.status === "DONE"
+                                              ? "deadline-chip-done"
+                                              : "cursor-grab active:cursor-grabbing"
+                                          }`.trim()}
+                                          draggable={task.status !== "DONE"}
                                           onDragStart={(event) => {
+                                            if (task.status === "DONE") return;
                                             event.dataTransfer.effectAllowed = "move";
                                             event.dataTransfer.setData(
                                               DRAG_TYPE_DEADLINE,

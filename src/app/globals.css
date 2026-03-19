@@ -1487,12 +1487,37 @@ select.glass-input {
   cursor: grabbing;
 }
 
+.deadline-chip-done {
+  border-color: rgba(52, 199, 89, 0.68);
+  background: rgba(52, 199, 89, 0.14);
+  color: #dcfce7;
+  cursor: default;
+}
+
+.deadline-chip-done:hover {
+  border-color: rgba(52, 199, 89, 0.88);
+  background: rgba(52, 199, 89, 0.22);
+  color: #ecfdf3;
+}
+
+.deadline-chip-done:active {
+  cursor: default;
+}
+
 .deadline-chip-static {
   cursor: pointer;
 }
 
+.deadline-chip-static.deadline-chip-done {
+  cursor: default;
+}
+
 .deadline-chip-static:active {
   cursor: pointer;
+}
+
+.deadline-chip-static.deadline-chip-done:active {
+  cursor: default;
 }
 
 .today-deadline-row {

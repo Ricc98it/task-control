@@ -11,6 +11,7 @@ import TaskEditModal from "@/components/TaskEditModal";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
 import { emitTasksUpdated } from "@/lib/taskEvents";
+import { markTaskCompletedNow } from "@/lib/taskCompletion";
 import { useIsMobile } from "@/lib/useIsMobile";
 import {
   formatDisplayDate,
@@ -172,6 +173,7 @@ export default function AllTasksPage() {
         item.id === task.id ? { ...item, status: "DONE", work_days: null } : item
       );
     });
+    markTaskCompletedNow();
     emitTasksUpdated();
   }
 

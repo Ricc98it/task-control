@@ -481,9 +481,9 @@ export default function CallsPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [colleagueEvents, setColleagueEvents] = useState<CalendarEvent[]>([]);
   const [connected, setConnected] = useState(false);
-  const [status, setStatus] = useState<GoogleStatus | null>(null);
+  const [, setStatus] = useState<GoogleStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [, setErr] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [createStep, setCreateStep] = useState<CreateEventStep>(1);
@@ -1562,28 +1562,6 @@ export default function CallsPage() {
               ))}
             </div>
           ) : null}
-          {connected && colleagueError ? (
-            <p className="meta-line meta-line-alert calls-top-colleague-meta">
-              {colleagueError}
-            </p>
-          ) : null}
-
-          {status?.lastSyncError ? (
-            <p className="mt-3 mx-auto max-w-4xl text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl">
-              Errore sync: {status.lastSyncError}
-            </p>
-          ) : null}
-          {err ? (
-            <p className="mt-3 mx-auto max-w-4xl text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl">
-              {err}
-            </p>
-          ) : null}
-          {!connected ? (
-            <p className="mt-3 mx-auto max-w-4xl text-sm text-slate-200 border border-slate-500/30 bg-slate-800/30 px-3 py-2 rounded-xl">
-              Collega Google Calendar da <Link href="/settings" className="link-primary">Impostazioni</Link> per vedere le call.
-            </p>
-          ) : null}
-
           <div className="week-board-shell calls-week-shell">
             <button
               type="button"

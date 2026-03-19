@@ -3,8 +3,13 @@ import type { TaskType } from "@/lib/tasks";
 type HomeContextStats = {
   todayTasks: number;
   criticalTodayTasks: number;
+  criticalTodayTopTaskTitle?: string | null;
   weekDeadlines: number;
   unassignedTodayTasks: number;
+  overdueYesterdayDeadlines: number;
+  overdueYesterdayTopTitle?: string | null;
+  isMonday: boolean;
+  noCompletionForTwoDays: boolean;
 };
 
 type TasksContextStats = {
@@ -33,13 +38,44 @@ export function getHomeContextHint(stats: HomeContextStats): string {
 }
 
 export function getHomeContextHints(stats: HomeContextStats): string[] {
+  if (stats.overdueYesterdayDeadlines > 0) {
+    if (stats.overdueYesterdayTopTitle) {
+      return [
+        `Hai completato la scadenza “${stats.overdueYesterdayTopTitle}” di ieri?`,
+      ];
+    }
+    return [
+      `Hai ${formatCount(
+        stats.overdueYesterdayDeadlines,
+        "scadenza",
+        "scadenze"
+      )} di ieri ancora aperte. Facciamo un check?`,
+    ];
+  }
+
   const hints: string[] = [];
 
-  if (stats.criticalTodayTasks > 0) {
-    hints.push(
-      `Oggi hai ${formatCount(stats.criticalTodayTasks, "task critico", "task critici")} da gestire`
-    );
+  if (stats.isMonday) {
+    hints.push("Nuova settimana: da cosa partiamo?");
   }
+
+  if (stats.criticalTodayTasks > 0) {
+    const criticalCountLabel = formatCount(
+      stats.criticalTodayTasks,
+      "task critico",
+      "task critici"
+    );
+    if (stats.criticalTodayTopTaskTitle) {
+      hints.push(`Oggi hai ${criticalCountLabel}. Partiamo da “${stats.criticalTodayTopTaskTitle}”?`);
+    } else {
+      hints.push(`Oggi hai ${criticalCountLabel}. Partiamo?`);
+    }
+  }
+
+  if (stats.noCompletionForTwoDays) {
+    hints.push("Nessun task completato da 2 giorni. Facciamo un check?");
+  }
+
   if (stats.todayTasks > 0) {
     hints.push(`Oggi hai ${formatCount(stats.todayTasks, "task")} da completare`);
   }
