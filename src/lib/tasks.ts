@@ -1,3 +1,12 @@
+import {
+  PRIORITY_LABELS,
+  PRIORITY_EMOJIS,
+  STATUS_LABELS,
+  STATUS_EMOJIS,
+  TYPE_LABELS,
+  TYPE_EMOJIS,
+} from "@/lib/constants";
+
 export type TaskStatus = "INBOX" | "OPEN" | "DONE";
 export type TaskType = "WORK" | "PERSONAL";
 export type TaskPriority = "P0" | "P1" | "P2" | "P3";
@@ -35,43 +44,42 @@ const PRIORITY_META: Record<
   TaskPriority,
   { label: string; emoji: string; tone: PriorityTone }
 > = {
-  P0: { label: "Critico", emoji: "", tone: "p0" },
-  P1: { label: "Alto", emoji: "", tone: "p1" },
-  P2: { label: "Medio", emoji: "", tone: "p2" },
-  P3: { label: "Basso", emoji: "", tone: "p3" },
+  P0: { label: PRIORITY_LABELS.P0, emoji: PRIORITY_EMOJIS.P0, tone: "p0" },
+  P1: { label: PRIORITY_LABELS.P1, emoji: PRIORITY_EMOJIS.P1, tone: "p1" },
+  P2: { label: PRIORITY_LABELS.P2, emoji: PRIORITY_EMOJIS.P2, tone: "p2" },
+  P3: { label: PRIORITY_LABELS.P3, emoji: PRIORITY_EMOJIS.P3, tone: "p3" },
 };
 
-const TYPE_META: Record<TaskType, { label: string; emoji: string; tone: TypeTone }> =
-  {
-    WORK: { label: "Lavoro", emoji: "💼", tone: "work" },
-    PERSONAL: { label: "Personale", emoji: "🏡", tone: "personal" },
-  };
+const TYPE_META: Record<TaskType, { label: string; emoji: string; tone: TypeTone }> = {
+  WORK: { label: TYPE_LABELS.WORK, emoji: TYPE_EMOJIS.WORK, tone: "work" },
+  PERSONAL: { label: TYPE_LABELS.PERSONAL, emoji: TYPE_EMOJIS.PERSONAL, tone: "personal" },
+};
 
 const STATUS_META: Record<
   TaskStatus,
   { label: string; emoji: string; tone: StatusTone }
 > = {
-  INBOX: { label: "Da pianificare", emoji: "📥", tone: "inbox" },
-  OPEN: { label: "Pianificato", emoji: "🗓️", tone: "open" },
-  DONE: { label: "Completato", emoji: "✅", tone: "done" },
+  INBOX: { label: STATUS_LABELS.INBOX, emoji: STATUS_EMOJIS.INBOX, tone: "inbox" },
+  OPEN: { label: STATUS_LABELS.OPEN, emoji: STATUS_EMOJIS.OPEN, tone: "open" },
+  DONE: { label: STATUS_LABELS.DONE, emoji: STATUS_EMOJIS.DONE, tone: "done" },
 };
 
 export const PRIORITY_OPTIONS = [
-  { value: "P0", label: "Critico", tone: "p0" },
-  { value: "P1", label: "Alto", tone: "p1" },
-  { value: "P2", label: "Medio", tone: "p2" },
-  { value: "P3", label: "Basso", tone: "p3" },
+  { value: "P0", label: PRIORITY_LABELS.P0, tone: "p0" },
+  { value: "P1", label: PRIORITY_LABELS.P1, tone: "p1" },
+  { value: "P2", label: PRIORITY_LABELS.P2, tone: "p2" },
+  { value: "P3", label: PRIORITY_LABELS.P3, tone: "p3" },
 ];
 
 export const TYPE_OPTIONS = [
-  { value: "WORK", label: "💼 Lavoro", tone: "work" },
-  { value: "PERSONAL", label: "🏡 Personale", tone: "personal" },
+  { value: "WORK", label: `${TYPE_EMOJIS.WORK} ${TYPE_LABELS.WORK}`, tone: "work" },
+  { value: "PERSONAL", label: `${TYPE_EMOJIS.PERSONAL} ${TYPE_LABELS.PERSONAL}`, tone: "personal" },
 ];
 
 export const STATUS_OPTIONS = [
-  { value: "OPEN", label: "🗓️ Pianificato", tone: "open" },
-  { value: "INBOX", label: "📥 Da pianificare", tone: "inbox" },
-  { value: "DONE", label: "✅ Completato", tone: "done" },
+  { value: "OPEN", label: `${STATUS_EMOJIS.OPEN} ${STATUS_LABELS.OPEN}`, tone: "open" },
+  { value: "INBOX", label: `${STATUS_EMOJIS.INBOX} ${STATUS_LABELS.INBOX}`, tone: "inbox" },
+  { value: "DONE", label: `${STATUS_EMOJIS.DONE} ${STATUS_LABELS.DONE}`, tone: "done" },
 ];
 
 export function getPriorityMeta(priority?: TaskPriority | null) {

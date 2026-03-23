@@ -16,6 +16,7 @@ import { ensureSession } from "@/lib/autoSession";
 import { supabase } from "@/lib/supabaseClient";
 import { emitTasksUpdated } from "@/lib/taskEvents";
 import { useIsMobile } from "@/lib/useIsMobile";
+import { TYPE_BUTTON_LABELS, UI } from "@/lib/constants";
 import {
   PRIORITY_OPTIONS,
   type Project,
@@ -568,7 +569,7 @@ export default function TaskWizardModal({
                     role="tab"
                     aria-selected={type === "WORK"}
                   >
-                    💼 Lavoro
+                    {TYPE_BUTTON_LABELS.WORK}
                   </button>
                   <button
                     type="button"
@@ -579,7 +580,7 @@ export default function TaskWizardModal({
                     role="tab"
                     aria-selected={type === "PERSONAL"}
                   >
-                    🏡 Personale
+                    {TYPE_BUTTON_LABELS.PERSONAL}
                   </button>
                 </div>
                 {isMobile && step === 3 ? (
@@ -588,7 +589,7 @@ export default function TaskWizardModal({
                     className="wizard-mobile-submit"
                     disabled={saving}
                   >
-                    {saving ? "Salvo..." : "Crea task"}
+                    {saving ? UI.SAVING : "Crea task"}
                   </button>
                 ) : null}
                 <button
@@ -596,7 +597,7 @@ export default function TaskWizardModal({
                   className="wizard-cancel-link"
                   onClick={closeAndReset}
                 >
-                  Annulla
+                  {UI.CANCEL}
                 </button>
               </div>
             </form>

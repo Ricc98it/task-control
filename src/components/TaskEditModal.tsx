@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { TYPE_BUTTON_LABELS, UI } from "@/lib/constants";
 import DatePicker from "@/components/DatePicker";
 import Select from "@/components/Select";
 import { supabase } from "@/lib/supabaseClient";
@@ -238,7 +239,7 @@ export default function TaskEditModal({
                 role="tab"
                 aria-selected={type === "WORK"}
               >
-                💼 Lavoro
+                {TYPE_BUTTON_LABELS.WORK}
               </button>
               <button
                 type="button"
@@ -247,7 +248,7 @@ export default function TaskEditModal({
                 role="tab"
                 aria-selected={type === "PERSONAL"}
               >
-                🏡 Personale
+                {TYPE_BUTTON_LABELS.PERSONAL}
               </button>
             </div>
 
@@ -258,14 +259,14 @@ export default function TaskEditModal({
                 onClick={onClose}
                 disabled={saving}
               >
-                Annulla
+                {UI.CANCEL}
               </button>
               <button
                 type="submit"
                 className="wizard-forward-btn is-submit task-edit-save-btn"
                 disabled={saving}
               >
-                {saving ? "Salvo..." : "Salva"}
+                {saving ? UI.SAVING : UI.SAVE}
               </button>
             </div>
           </div>

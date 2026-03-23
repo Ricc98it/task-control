@@ -11,6 +11,7 @@ import SkeletonList from "@/components/SkeletonList";
 import { supabase } from "@/lib/supabaseClient";
 import { ensureSession } from "@/lib/autoSession";
 import { useIsMobile } from "@/lib/useIsMobile";
+import { TYPE_BUTTON_LABELS, UI } from "@/lib/constants";
 import { type Project, type TaskType } from "@/lib/tasks";
 
 type ProjectUsageRow = {
@@ -297,7 +298,7 @@ export default function ProjectsPage() {
         role="tab"
         aria-selected={activeType === "WORK"}
       >
-        💼 Lavoro
+        {TYPE_BUTTON_LABELS.WORK}
       </button>
       <button
         type="button"
@@ -306,7 +307,7 @@ export default function ProjectsPage() {
         role="tab"
         aria-selected={activeType === "PERSONAL"}
       >
-        🏡 Personale
+        {TYPE_BUTTON_LABELS.PERSONAL}
       </button>
     </div>
   );
@@ -342,7 +343,7 @@ export default function ProjectsPage() {
                     onClick={() => saveRename(project.id)}
                     disabled={renamingId === project.id}
                   >
-                    {renamingId === project.id ? "Salvo..." : "Salva"}
+                    {renamingId === project.id ? UI.SAVING : UI.SAVE}
                   </Button>
                   <Button
                     variant="tertiary"
@@ -447,7 +448,7 @@ export default function ProjectsPage() {
                     <div className="projects-column">
                       <div className="projects-section-header">
                         <h2 className="projects-section-title">
-                          {activeType === "WORK" ? "💼 Lavoro" : "🏡 Personale"}
+                          {activeType === "WORK" ? TYPE_BUTTON_LABELS.WORK : TYPE_BUTTON_LABELS.PERSONAL}
                         </h2>
                         <span className="projects-section-subtitle">
                           {activeProjects.length} progetti assegnati
@@ -462,7 +463,7 @@ export default function ProjectsPage() {
                   <div className="projects-grid">
                     <div className="projects-column">
                       <div className="projects-section-header">
-                        <h2 className="projects-section-title">💼 Lavoro</h2>
+                        <h2 className="projects-section-title">{TYPE_BUTTON_LABELS.WORK}</h2>
                         <span className="projects-section-subtitle">
                           {workProjects.length} progetti assegnati
                         </span>
@@ -473,7 +474,7 @@ export default function ProjectsPage() {
                     </div>
                     <div className="projects-column">
                       <div className="projects-section-header">
-                        <h2 className="projects-section-title">🏡 Personale</h2>
+                        <h2 className="projects-section-title">{TYPE_BUTTON_LABELS.PERSONAL}</h2>
                         <span className="projects-section-subtitle">
                           {personalProjects.length} progetti assegnati
                         </span>
@@ -518,7 +519,7 @@ export default function ProjectsPage() {
                 onClick={() => void createProject("WORK")}
                 disabled={saving}
               >
-                💼 Lavoro
+                {TYPE_BUTTON_LABELS.WORK}
               </button>
               <button
                 type="button"
@@ -526,7 +527,7 @@ export default function ProjectsPage() {
                 onClick={() => void createProject("PERSONAL")}
                 disabled={saving}
               >
-                🏡 Personale
+                {TYPE_BUTTON_LABELS.PERSONAL}
               </button>
             </div>
             <button
@@ -535,7 +536,7 @@ export default function ProjectsPage() {
               onClick={() => setCreateTypeOpen(false)}
               disabled={saving}
             >
-              Annulla
+              {UI.CANCEL}
             </button>
           </div>
         </div>

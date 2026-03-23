@@ -13,6 +13,7 @@ import { ensureSession } from "@/lib/autoSession";
 import { emitTasksUpdated } from "@/lib/taskEvents";
 import { markTaskCompletedNow } from "@/lib/taskCompletion";
 import { useIsMobile } from "@/lib/useIsMobile";
+import { TYPE_BUTTON_LABELS, UI } from "@/lib/constants";
 import {
   formatDisplayDate,
   formatWorkDaysSummary,
@@ -198,7 +199,7 @@ export default function AllTasksPage() {
         role="tab"
         aria-selected={activeType === "WORK"}
       >
-        💼 Lavoro
+        {TYPE_BUTTON_LABELS.WORK}
       </button>
       <button
         type="button"
@@ -210,7 +211,7 @@ export default function AllTasksPage() {
         role="tab"
         aria-selected={activeType === "PERSONAL"}
       >
-        🏡 Personale
+        {TYPE_BUTTON_LABELS.PERSONAL}
       </button>
     </div>
   );
@@ -423,7 +424,7 @@ export default function AllTasksPage() {
                 onClick={() => setCompleteTarget(null)}
                 disabled={markingId === completeTarget.id}
               >
-                Annulla
+                {UI.CANCEL}
               </button>
               <button
                 type="button"
@@ -437,7 +438,7 @@ export default function AllTasksPage() {
                 }}
                 disabled={markingId === completeTarget.id}
               >
-                {markingId === completeTarget.id ? "Completo..." : "Completa"}
+                {markingId === completeTarget.id ? UI.COMPLETING : UI.COMPLETE}
               </button>
             </div>
           </div>

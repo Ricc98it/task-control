@@ -2,16 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
-  type TouchEvent,
-} from "react";
-import type { User } from "@supabase/supabase-js";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import DatePicker from "@/components/DatePicker";
 import EmptyState from "@/components/EmptyState";
 import Icon from "@/components/Icon";
@@ -19,58 +10,17 @@ import ListRow from "@/components/ListRow";
 import Nav from "@/components/Nav";
 import SkeletonList from "@/components/SkeletonList";
 import TaskEditModal from "@/components/TaskEditModal";
-import { ensureSession } from "@/lib/autoSession";
-import { getHomeContextHints } from "@/lib/contextHints";
-import { emitTasksUpdated, onTasksUpdated } from "@/lib/taskEvents";
-import {
-  getLastTaskCompletedAt,
-  markTaskCompletedNow,
-  onTaskCompleted,
-} from "@/lib/taskCompletion";
-import { supabase } from "@/lib/supabaseClient";
 import { useIsMobile } from "@/lib/useIsMobile";
-import {
-  addDays,
-  formatDisplayDate,
-  formatISODate,
-  getPriorityMeta,
-  getTypeMeta,
-  normalizeTasks,
-  startOfWeek,
-  todayISO,
-  type Project,
-  type Task,
-} from "@/lib/tasks";
-
-type SessionState = "loading" | "authed" | "anon";
-
-type Profile = {
-  user_id: string;
-  email: string;
-  full_name: string;
-};
-
-type DropTarget = { id: string; label: string; date: string };
-const DRAG_TYPE_TASK = "application/x-task-control-task";
-const DRAG_TYPE_DEADLINE = "application/x-task-control-deadline";
-const DEADLINE_PREFIX = "deadline:";
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function parseDraggedTaskId(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const value = raw.trim();
-  if (!value) return null;
-
-  const stripped = value.startsWith(DEADLINE_PREFIX)
-    ? value.slice(DEADLINE_PREFIX.length)
-    : value;
-  if (UUID_REGEX.test(stripped)) return stripped;
-
-  const match = /\/task\/([0-9a-f-]{36})(?:$|[/?#])/i.exec(value);
-  if (!match?.[1]) return null;
-  return UUID_REGEX.test(match[1]) ? match[1] : null;
-}
+import { addDays, formatDisplayDate, formatISODate, getPriorityMeta, getTypeMeta, todayISO, type Task } from "@/lib/tasks";
+import { useSession } from "@/hooks/useSession";
+import { useProfile } from "@/hooks/useProfile";
+import { usePlanningData } from "@/hooks/usePlanningData";
+import { useWeekNavigation } from "@/hooks/useWeekNavigation";
+import { useCompletionOverlay } from "@/hooks/useCompletionOverlay";
+import { useTaskActions } from "@/hooks/useTaskActions";
+import { useDragDrop, parseDraggedTaskId, DRAG_TYPE_TASK, DRAG_TYPE_DEADLINE, DEADLINE_PREFIX } from "@/hooks/useDragDrop";
+import { useSwipeAndLongPress } from "@/hooks/useSwipeAndLongPress";
+import { useContextHint } from "@/hooks/useContextHint";
 
 function priorityRank(priority: Task["priority"]): number {
   if (priority === "P0") return 0;
@@ -80,97 +30,125 @@ function priorityRank(priority: Task["priority"]): number {
   return 4;
 }
 
-function formatNameFromEmail(email: string): string {
-  const local = email.split("@")[0]?.trim();
-  if (!local) return email;
-  const cleaned = local.replace(/[._-]+/g, " ").trim();
-  if (!cleaned) return local;
-  return cleaned
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function resolveUserName(user: User | null): string | null {
-  if (!user) return null;
-  const metadata = user.user_metadata ?? {};
-  const metaName =
-    typeof metadata.full_name === "string"
-      ? metadata.full_name
-      : typeof metadata.name === "string"
-      ? metadata.name
-      : null;
-  if (metaName && metaName.trim()) return metaName.trim();
-  if (user.email) return formatNameFromEmail(user.email);
-  return null;
-}
-
 export default function HomePage() {
   const router = useRouter();
   const isMobile = useIsMobile();
-  const [sessionState, setSessionState] = useState<SessionState>("loading");
-  const [sessionUser, setSessionUser] = useState<User | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [profileChecked, setProfileChecked] = useState(false);
 
-  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [deadlines, setDeadlines] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  // --- Session & profile ---
+  const { sessionState, sessionUser, userName } = useSession();
+  const { profile, profileLoading, profileChecked } = useProfile(sessionState, sessionUser);
+
+  // --- Week navigation ---
+  const {
+    weekStart,
+    setWeekStart,
+    days,
+    previousDay,
+    nextDay,
+    activeDay,
+    goPrevDay,
+    goNextDay,
+    goToToday,
+  } = useWeekNavigation();
+
+  // --- Data fetching ---
+  const {
+    tasks,
+    deadlines,
+    projects,
+    loadingPlanning,
+    planningErr,
+    setPlanningErr,
+    loadPlanningData,
+    setTasks,
+    setDeadlines,
+    latestDoneTaskCreatedAt,
+  } = usePlanningData(sessionState, weekStart);
+
+  // --- Completion overlay ---
+  const {
+    taskCompletedOverlayVisible,
+    showTaskCompletedOverlay,
+    lastTaskCompletedSignal,
+  } = useCompletionOverlay();
+
+  // --- Modal state (UI-only, stays in page) ---
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskActionTarget, setTaskActionTarget] = useState<Task | null>(null);
-  const [completingId, setCompletingId] = useState<string | null>(null);
-  const [taskCompletedOverlayVisible, setTaskCompletedOverlayVisible] = useState(false);
-  const [homeContextHint, setHomeContextHint] = useState(
-    "Sto aggiornando le informazioni utili per oggi..."
-  );
-  const [loadingPlanning, setLoadingPlanning] = useState(true);
-  const [planningErr, setPlanningErr] = useState<string | null>(null);
-  const [lastTaskCompletedSignal, setLastTaskCompletedSignal] = useState<string | null>(null);
-  const [latestDoneTaskCreatedAt, setLatestDoneTaskCreatedAt] = useState<string | null>(null);
-
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
-  const [hoverTarget, setHoverTarget] = useState<string | null>(null);
-  const [activeDayIndex, setActiveDayIndex] = useState(() => {
-    const day = new Date().getDay();
-    if (day === 0 || day === 6) return 4;
-    return Math.min(4, Math.max(0, day - 1));
-  });
   const [movingTaskTarget, setMovingTaskTarget] = useState<Task | null>(null);
   const [movingTaskWorkingDays, setMovingTaskWorkingDays] = useState<string[]>([]);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [movingDeadlineTarget, setMovingDeadlineTarget] = useState<Task | null>(null);
   const [movingDeadlineDate, setMovingDeadlineDate] = useState("");
   const [movingDeadlineId, setMovingDeadlineId] = useState<string | null>(null);
-  const dropHandledRef = useRef(false);
-  const draggingIdRef = useRef<string | null>(null);
-  const draggingFromRef = useRef<string | null>(null);
-  const taskCompletedOverlayTimerRef = useRef<number | null>(null);
-  const swipeStartXRef = useRef<number | null>(null);
-  const swipeStartYRef = useRef<number | null>(null);
-  const taskLongPressTimerRef = useRef<number | null>(null);
-  const deadlineLongPressTimerRef = useRef<number | null>(null);
-  const consumeTaskClickRef = useRef<string | null>(null);
-  const consumeDeadlineClickRef = useRef<string | null>(null);
+
+  // --- Task actions ---
+  const {
+    completingId,
+    moveTask,
+    moveDeadline,
+    updateTaskWorkingDays,
+    removeDayFromTask,
+    completeTaskFromWeek,
+  } = useTaskActions({
+    tasks,
+    setTasks,
+    setDeadlines,
+    setPlanningErr,
+    loadPlanningData,
+    showTaskCompletedOverlay,
+    onCompleted: () => setTaskActionTarget(null),
+  });
+
+  // --- Drag & drop ---
+  const {
+    draggingId,
+    setDraggingId,
+    draggingFrom,
+    setDraggingFrom,
+    hoverTarget,
+    setHoverTarget,
+    dropHandledRef,
+    draggingIdRef,
+    draggingFromRef,
+    handleDrop,
+  } = useDragDrop({ moveTask, moveDeadline });
+
+  // --- Swipe & long press ---
+  const {
+    handleDayTouchStart,
+    handleDayTouchEnd,
+    cancelTaskLongPress,
+    cancelDeadlineLongPress,
+    startTaskLongPress,
+    startDeadlineLongPress,
+    handleTaskTap,
+    handleDeadlineTap,
+  } = useSwipeAndLongPress({
+    isMobile,
+    goPrevDay,
+    goNextDay,
+    setMovingTaskTarget,
+    setMovingDeadlineTarget,
+    setTaskActionTarget,
+  });
+
+  // --- Derived values ---
   const today = useMemo(() => todayISO(), []);
   const yesterday = useMemo(() => formatISODate(addDays(new Date(), -1)), []);
 
-  const days = useMemo<DropTarget[]>(() => {
-    const labels = ["Lun", "Mar", "Mer", "Gio", "Ven"];
-    return labels.map((label, index) => {
-      const date = addDays(weekStart, index);
-      return {
-        id: formatISODate(date),
-        label,
-        date: formatISODate(date),
-      };
-    });
-  }, [weekStart]);
+  // --- Context hint ---
+  const { homeContextHint } = useContextHint({
+    tasks,
+    deadlines,
+    loadingPlanning,
+    lastTaskCompletedSignal,
+    latestDoneTaskCreatedAt,
+    today,
+    yesterday,
+  });
 
+  // --- Derived display values ---
   const deadlinesByDay = useMemo(() => {
     const map = new Map<string, Task[]>();
     deadlines.forEach((task) => {
@@ -182,514 +160,22 @@ export default function HomePage() {
     });
     return map;
   }, [deadlines]);
-  const activeDay = days[activeDayIndex] ?? days[0] ?? null;
-  const previousDay = useMemo(() => {
-    const labels = ["Lun", "Mar", "Mer", "Gio", "Ven"];
-    let index = activeDayIndex - 1;
-    let baseWeekStart = weekStart;
-    if (index < 0) {
-      index = 4;
-      baseWeekStart = addDays(weekStart, -7);
-    }
-    const date = formatISODate(addDays(baseWeekStart, index));
-    return {
-      id: `prev-${date}`,
-      label: labels[index],
-      date,
-    };
-  }, [activeDayIndex, weekStart]);
-  const nextDay = useMemo(() => {
-    const labels = ["Lun", "Mar", "Mer", "Gio", "Ven"];
-    let index = activeDayIndex + 1;
-    let baseWeekStart = weekStart;
-    if (index > 4) {
-      index = 0;
-      baseWeekStart = addDays(weekStart, 7);
-    }
-    const date = formatISODate(addDays(baseWeekStart, index));
-    return {
-      id: `next-${date}`,
-      label: labels[index],
-      date,
-    };
-  }, [activeDayIndex, weekStart]);
 
-  useEffect(() => {
-    let active = true;
+  const isAuthed = sessionState === "authed";
+  const shouldOnboard = isAuthed && profileChecked && !profileLoading && !profile?.full_name;
+  const greetingName = profile?.full_name ?? userName;
+  const greeting = greetingName ? `Ciao ${greetingName}!` : "Ciao!";
+  const mobileDayTasks = activeDay ? getTasksFor(activeDay) : [];
+  const mobileDayDeadlines = activeDay ? deadlinesByDay.get(activeDay.date) ?? [] : [];
+  const isActiveDayToday = activeDay?.date === today;
+  const isActiveDayPast = activeDay ? activeDay.date < today : false;
+  const isOnToday = isActiveDayToday;
 
-    (async () => {
-      try {
-        const session = await ensureSession();
-        if (!active) return;
-        if (!session) {
-          setSessionState("anon");
-          setSessionUser(null);
-          setUserName(null);
-          router.replace("/login");
-          return;
-        }
-        setSessionState("authed");
-        setSessionUser(session.user ?? null);
-        setUserName(resolveUserName(session.user ?? null));
-      } catch {
-        if (!active) return;
-        setSessionState("anon");
-        setSessionUser(null);
-        setUserName(null);
-        router.replace("/login");
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (sessionState !== "authed" || !sessionUser) return;
-    let active = true;
-    setProfileLoading(true);
-    setProfileChecked(false);
-
-    const loadProfile = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("user_id,full_name,email")
-          .eq("user_id", sessionUser.id)
-          .maybeSingle();
-
-        if (!active) return;
-        if (error) console.error(error);
-
-        setProfile(
-          data
-            ? {
-                user_id: data.user_id,
-                email: data.email,
-                full_name: data.full_name,
-              }
-            : null
-        );
-      } catch {
-        if (!active) return;
-        setProfile(null);
-      } finally {
-        if (!active) return;
-        setProfileLoading(false);
-        setProfileChecked(true);
-      }
-    };
-
-    void loadProfile();
-
-    return () => {
-      active = false;
-    };
-  }, [sessionState, sessionUser]);
-
-  const loadPlanningData = useCallback(async () => {
-    const weekStartISO = formatISODate(weekStart);
-    const weekEndISO = formatISODate(addDays(weekStart, 4));
-    const deadlineWindowStart = weekStartISO < yesterday ? weekStartISO : yesterday;
-
-    const [plannedRes, deadlineRes, projectsRes, latestDoneRes] = await Promise.all([
-      supabase
-        .from("tasks")
-        .select(
-          "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name)"
-        )
-        .eq("status", "OPEN")
-        .overlaps(
-          "work_days",
-          Array.from({ length: 5 }, (_, index) =>
-            formatISODate(addDays(weekStart, index))
-          )
-        )
-        .order("work_days", { ascending: true })
-        .order("priority", { ascending: true, nullsFirst: false }),
-      supabase
-        .from("tasks")
-        .select(
-          "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name)"
-        )
-        .not("due_date", "is", null)
-        .gte("due_date", deadlineWindowStart)
-        .lte("due_date", weekEndISO)
-        .order("due_date", { ascending: true })
-        .order("priority", { ascending: true, nullsFirst: false }),
-      supabase.from("projects").select("id,name,type").order("name"),
-      supabase
-        .from("tasks")
-        .select("created_at")
-        .eq("status", "DONE")
-        .order("created_at", { ascending: false })
-        .limit(1),
-    ]);
-
-    if (plannedRes.error || deadlineRes.error || projectsRes.error) {
-      const message =
-        plannedRes.error?.message ??
-        deadlineRes.error?.message ??
-        projectsRes.error?.message ??
-        "Errore nel caricamento della settimana.";
-      setPlanningErr(message);
-    } else {
-      setPlanningErr(null);
-    }
-
-    setTasks(normalizeTasks(plannedRes.data ?? []));
-    setDeadlines(normalizeTasks(deadlineRes.data ?? []));
-    setProjects((projectsRes.data ?? []) as Project[]);
-    setLatestDoneTaskCreatedAt(
-      typeof latestDoneRes.data?.[0]?.created_at === "string"
-        ? latestDoneRes.data[0].created_at
-        : null
-    );
-  }, [weekStart, yesterday]);
-
-  useEffect(() => {
-    setLastTaskCompletedSignal(getLastTaskCompletedAt());
-    return onTaskCompleted((completedAtIso) => {
-      setLastTaskCompletedSignal(completedAtIso);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (sessionState !== "authed") return;
-
-    let active = true;
-    setLoadingPlanning(true);
-
-    loadPlanningData()
-      .catch((error) => {
-        if (!active) return;
-        setPlanningErr(
-          error instanceof Error ? error.message : "Errore nel caricamento."
-        );
-        setTasks([]);
-        setDeadlines([]);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoadingPlanning(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [loadPlanningData, sessionState]);
-
-  const showTaskCompletedOverlay = useCallback(() => {
-    setTaskCompletedOverlayVisible(true);
-    if (taskCompletedOverlayTimerRef.current !== null) {
-      window.clearTimeout(taskCompletedOverlayTimerRef.current);
-    }
-    taskCompletedOverlayTimerRef.current = window.setTimeout(() => {
-      setTaskCompletedOverlayVisible(false);
-      taskCompletedOverlayTimerRef.current = null;
-    }, 1500);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (taskCompletedOverlayTimerRef.current !== null) {
-        window.clearTimeout(taskCompletedOverlayTimerRef.current);
-      }
-      if (taskLongPressTimerRef.current !== null) {
-        window.clearTimeout(taskLongPressTimerRef.current);
-      }
-      if (deadlineLongPressTimerRef.current !== null) {
-        window.clearTimeout(deadlineLongPressTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!taskActionTarget) return;
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape" && !completingId) {
-        setTaskActionTarget(null);
-      }
-    }
-
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [taskActionTarget, completingId]);
-
-  useEffect(() => {
-    if (!movingTaskTarget && !movingDeadlineTarget) return;
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      if (!movingTaskId) {
-        setMovingTaskTarget(null);
-      }
-      if (!movingDeadlineId) {
-        setMovingDeadlineTarget(null);
-      }
-    }
-
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [movingTaskId, movingTaskTarget, movingDeadlineId, movingDeadlineTarget]);
-
-  useEffect(() => {
-    if (!movingTaskTarget) return;
-    setMovingTaskWorkingDays(movingTaskTarget.work_days ?? []);
-  }, [movingTaskTarget]);
-
-  useEffect(() => {
-    if (!movingDeadlineTarget) return;
-    setMovingDeadlineDate(movingDeadlineTarget.due_date ?? "");
-  }, [movingDeadlineTarget]);
-
-  useEffect(() => {
-    if (sessionState !== "authed") return;
-
-    return onTasksUpdated(() => {
-      loadPlanningData().catch(() => {});
-    });
-  }, [loadPlanningData, sessionState]);
-
-  function getTasksFor(target: DropTarget) {
-    const date = target.date;
+  // --- Helpers ---
+  function getTasksFor(target: { date: string }) {
     return tasks
-      .filter((task) => task.status === "OPEN" && task.work_days?.includes(date))
+      .filter((task) => task.status === "OPEN" && task.work_days?.includes(target.date))
       .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
-  }
-
-  async function moveTask(taskId: string, targetDate: string | null) {
-    setPlanningErr(null);
-    const currentTask = tasks.find((task) => task.id === taskId);
-    const nextDays =
-      targetDate === null
-        ? null
-        : Array.from(new Set([...(currentTask?.work_days ?? []), targetDate])).sort();
-
-    const payload: Pick<Task, "status" | "work_days"> =
-      targetDate === null
-        ? { status: "INBOX", work_days: null }
-        : { status: "OPEN", work_days: nextDays };
-
-    setTasks((prev) =>
-      prev.map((task) => (task.id === taskId ? { ...task, ...payload } : task))
-    );
-
-    const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
-    if (error) {
-      setPlanningErr(error.message);
-      await loadPlanningData().catch(() => {});
-    }
-  }
-
-  async function moveDeadline(taskId: string, targetDate: string) {
-    setPlanningErr(null);
-    const payload: Pick<Task, "due_date"> = { due_date: targetDate };
-
-    setDeadlines((prev) => {
-      const hasItem = prev.some((task) => task.id === taskId);
-      if (hasItem) {
-        return prev.map((task) =>
-          task.id === taskId ? { ...task, due_date: targetDate } : task
-        );
-      }
-      const source = tasks.find((task) => task.id === taskId);
-      if (!source) return prev;
-      return [...prev, { ...source, due_date: targetDate }];
-    });
-
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, due_date: targetDate } : task
-      )
-    );
-
-    const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
-    if (error) {
-      setPlanningErr(error.message);
-      await loadPlanningData().catch(() => {});
-    }
-  }
-
-  async function updateTaskWorkingDays(taskId: string, nextDays: string[]) {
-    setPlanningErr(null);
-    const normalizedDays = Array.from(new Set(nextDays)).sort();
-    const payload: Pick<Task, "status" | "work_days"> = {
-      status: normalizedDays.length > 0 ? "OPEN" : "INBOX",
-      work_days: normalizedDays.length > 0 ? normalizedDays : null,
-    };
-
-    setTasks((prev) =>
-      prev.map((task) => (task.id === taskId ? { ...task, ...payload } : task))
-    );
-
-    const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
-    if (error) {
-      setPlanningErr(error.message);
-      await loadPlanningData().catch(() => {});
-      return;
-    }
-
-    await loadPlanningData().catch(() => {});
-  }
-
-  async function removeDayFromTask(taskId: string, day: string) {
-    setPlanningErr(null);
-    const currentTask = tasks.find((task) => task.id === taskId);
-    if (!currentTask?.work_days) return;
-
-    const nextDays = currentTask.work_days.filter((value) => value !== day);
-    const payload: Pick<Task, "status" | "work_days"> = {
-      status: currentTask.status,
-      work_days: nextDays.length > 0 ? nextDays : null,
-    };
-
-    setTasks((prev) =>
-      prev.map((task) => (task.id === taskId ? { ...task, ...payload } : task))
-    );
-
-    const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
-    if (error) {
-      setPlanningErr(error.message);
-      await loadPlanningData().catch(() => {});
-    }
-  }
-
-  async function completeTaskFromWeek(task: Task) {
-    if (completingId) return;
-    setPlanningErr(null);
-    setCompletingId(task.id);
-    const payload: Pick<Task, "status" | "work_days"> = {
-      status: "DONE",
-      work_days: null,
-    };
-    const { error } = await supabase.from("tasks").update(payload).eq("id", task.id);
-    setCompletingId(null);
-
-    if (error) {
-      setPlanningErr(error.message);
-      return;
-    }
-
-    setTasks((prev) => prev.filter((item) => item.id !== task.id));
-    setDeadlines((prev) =>
-      prev.map((item) =>
-        item.id === task.id ? { ...item, status: "DONE", work_days: null } : item
-      )
-    );
-    setTaskActionTarget(null);
-    markTaskCompletedNow();
-    emitTasksUpdated();
-    showTaskCompletedOverlay();
-  }
-
-  function goPrevDay() {
-    setActiveDayIndex((prev) => {
-      if (prev > 0) return prev - 1;
-      setWeekStart((current) => addDays(current, -7));
-      return 4;
-    });
-  }
-
-  function goNextDay() {
-    setActiveDayIndex((prev) => {
-      if (prev < 4) return prev + 1;
-      setWeekStart((current) => addDays(current, 7));
-      return 0;
-    });
-  }
-
-  function goToToday() {
-    const now = new Date();
-    const weekday = now.getDay();
-    const nextIndex =
-      weekday === 0 || weekday === 6
-        ? 4
-        : Math.min(4, Math.max(0, weekday - 1));
-    setWeekStart(startOfWeek(now));
-    setActiveDayIndex(nextIndex);
-  }
-
-  function handleDayTouchStart(event: TouchEvent<HTMLDivElement>) {
-    if (!isMobile) return;
-    const touch = event.touches[0];
-    if (!touch) return;
-    swipeStartXRef.current = touch.clientX;
-    swipeStartYRef.current = touch.clientY;
-  }
-
-  function handleDayTouchEnd(event: TouchEvent<HTMLDivElement>) {
-    if (!isMobile) return;
-    const touch = event.changedTouches[0];
-    const startX = swipeStartXRef.current;
-    const startY = swipeStartYRef.current;
-    swipeStartXRef.current = null;
-    swipeStartYRef.current = null;
-    if (!touch || startX === null || startY === null) return;
-
-    const deltaX = touch.clientX - startX;
-    const deltaY = touch.clientY - startY;
-    if (Math.abs(deltaX) < 46 || Math.abs(deltaX) < Math.abs(deltaY)) return;
-
-    if (deltaX < 0) {
-      goNextDay();
-      return;
-    }
-    goPrevDay();
-  }
-
-  function cancelTaskLongPress() {
-    if (taskLongPressTimerRef.current !== null) {
-      window.clearTimeout(taskLongPressTimerRef.current);
-      taskLongPressTimerRef.current = null;
-    }
-  }
-
-  function cancelDeadlineLongPress() {
-    if (deadlineLongPressTimerRef.current !== null) {
-      window.clearTimeout(deadlineLongPressTimerRef.current);
-      deadlineLongPressTimerRef.current = null;
-    }
-  }
-
-  function startTaskLongPress(task: Task) {
-    cancelTaskLongPress();
-    taskLongPressTimerRef.current = window.setTimeout(() => {
-      consumeTaskClickRef.current = task.id;
-      setMovingTaskTarget(task);
-      taskLongPressTimerRef.current = null;
-    }, 420);
-  }
-
-  function startDeadlineLongPress(task: Task) {
-    cancelDeadlineLongPress();
-    deadlineLongPressTimerRef.current = window.setTimeout(() => {
-      consumeDeadlineClickRef.current = task.id;
-      setMovingDeadlineTarget(task);
-      deadlineLongPressTimerRef.current = null;
-    }, 420);
-  }
-
-  function handleTaskTap(task: Task) {
-    if (consumeTaskClickRef.current === task.id) {
-      consumeTaskClickRef.current = null;
-      return;
-    }
-    setTaskActionTarget(task);
-  }
-
-  function handleDeadlineTap(task: Task) {
-    if (consumeDeadlineClickRef.current === task.id) {
-      consumeDeadlineClickRef.current = null;
-      return;
-    }
-    setTaskActionTarget(task);
   }
 
   async function applyMovingTaskDates(nextDates: string[]) {
@@ -710,146 +196,46 @@ export default function HomePage() {
     setMovingDeadlineDate("");
   }
 
-  function handleDrop(event: DragEvent<HTMLDivElement>, targetDate: string | null) {
-    event.preventDefault();
-    const deadlineData = event.dataTransfer.getData(DRAG_TYPE_DEADLINE);
-    const taskData = event.dataTransfer.getData(DRAG_TYPE_TASK);
-    const plainData = event.dataTransfer.getData("text/plain");
-    const inferDeadlineFromUrl =
-      !taskData &&
-      !draggingId &&
-      !draggingIdRef.current &&
-      /^https?:\/\/.+\/task\/[0-9a-f-]{36}(?:$|[/?#])/i.test(plainData);
-
-    const deadlineId =
-      parseDraggedTaskId(deadlineData) ??
-      parseDraggedTaskId(
-        plainData.startsWith(DEADLINE_PREFIX) ? plainData : null
-      ) ??
-      (inferDeadlineFromUrl ? parseDraggedTaskId(plainData) : null);
-
-    if (deadlineId && targetDate) {
-      dropHandledRef.current = true;
-      void moveDeadline(deadlineId, targetDate);
-      setDraggingId(null);
-      draggingIdRef.current = null;
-      setDraggingFrom(null);
-      draggingFromRef.current = null;
-      setHoverTarget(null);
-      return;
-    }
-
-    const taskId = parseDraggedTaskId(
-      draggingId ?? draggingIdRef.current ?? taskData ?? plainData
-    );
-    if (!taskId) return;
-
-    dropHandledRef.current = true;
-    void moveTask(taskId, targetDate);
-    setDraggingId(null);
-    draggingIdRef.current = null;
-    setDraggingFrom(null);
-    draggingFromRef.current = null;
-    setHoverTarget(null);
-  }
-
-  const isAuthed = sessionState === "authed";
-  const shouldOnboard =
-    isAuthed && profileChecked && !profileLoading && !profile?.full_name;
-  const greetingName = profile?.full_name ?? userName;
-  const greeting = greetingName ? `Ciao ${greetingName}!` : "Ciao!";
-  const mobileDayTasks = activeDay ? getTasksFor(activeDay) : [];
-  const mobileDayDeadlines = activeDay ? deadlinesByDay.get(activeDay.date) ?? [] : [];
-  const isActiveDayToday = activeDay?.date === today;
-  const isActiveDayPast = activeDay ? activeDay.date < today : false;
-  const isOnToday = isActiveDayToday;
-  const homeContextHintOptions = useMemo(() => {
-    if (loadingPlanning) return [];
-    const todayTasks = tasks.filter((task) => task.work_days?.includes(today)).length;
-    const criticalTodayList = tasks
-      .filter(
-        (task) =>
-          task.work_days?.includes(today) &&
-          (task.priority === "P0" || task.priority === "P1")
-      )
-      .sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority));
-    const criticalTodayTasks = criticalTodayList.length;
-    const criticalTodayTopTaskTitle = criticalTodayList[0]?.title ?? null;
-    const weekDeadlines = deadlines.filter((task) => task.status !== "DONE").length;
-    const unassignedTodayTasks = tasks.filter(
-      (task) =>
-        task.work_days?.includes(today) && !task.project?.name
-    ).length;
-    const overdueYesterdayList = deadlines.filter(
-      (task) => task.status !== "DONE" && task.due_date?.slice(0, 10) === yesterday
-    );
-    const overdueYesterdayDeadlines = overdueYesterdayList.length;
-    const overdueYesterdayTopTitle = overdueYesterdayList[0]?.title ?? null;
-    const monday = new Date().getDay() === 1;
-
-    const signalDate = lastTaskCompletedSignal ? new Date(lastTaskCompletedSignal) : null;
-    const latestDoneDate = latestDoneTaskCreatedAt ? new Date(latestDoneTaskCreatedAt) : null;
-    const completionReference = (() => {
-      if (signalDate && latestDoneDate) {
-        return signalDate > latestDoneDate ? signalDate : latestDoneDate;
+  // --- Effects ---
+  useEffect(() => {
+    if (!taskActionTarget) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && !completingId) {
+        setTaskActionTarget(null);
       }
-      return signalDate ?? latestDoneDate ?? null;
-    })();
-    const noCompletionForTwoDays =
-      completionReference !== null &&
-      Date.now() - completionReference.getTime() >= 2 * 24 * 60 * 60 * 1000;
-
-    return getHomeContextHints({
-      todayTasks,
-      criticalTodayTasks,
-      criticalTodayTopTaskTitle,
-      weekDeadlines,
-      unassignedTodayTasks,
-      overdueYesterdayDeadlines,
-      overdueYesterdayTopTitle,
-      isMonday: monday,
-      noCompletionForTwoDays,
-    });
-  }, [
-    deadlines,
-    lastTaskCompletedSignal,
-    latestDoneTaskCreatedAt,
-    loadingPlanning,
-    tasks,
-    today,
-    yesterday,
-  ]);
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [taskActionTarget, completingId]);
 
   useEffect(() => {
-    if (loadingPlanning) {
-      setHomeContextHint("Sto aggiornando le informazioni utili per oggi...");
-      return;
+    if (!movingTaskTarget && !movingDeadlineTarget) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (!movingTaskId) setMovingTaskTarget(null);
+      if (!movingDeadlineId) setMovingDeadlineTarget(null);
     }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [movingTaskId, movingTaskTarget, movingDeadlineId, movingDeadlineTarget]);
 
-    if (homeContextHintOptions.length === 0) {
-      setHomeContextHint("Settimana leggera: nessun task pianificato per oggi");
-      return;
-    }
+  useEffect(() => {
+    if (!movingTaskTarget) return;
+    setMovingTaskWorkingDays(movingTaskTarget.work_days ?? []);
+  }, [movingTaskTarget]);
 
-    setHomeContextHint((previous) => {
-      if (homeContextHintOptions.length === 1) return homeContextHintOptions[0];
-      const pool = previous
-        ? homeContextHintOptions.filter((hint) => hint !== previous)
-        : homeContextHintOptions;
-      const source = pool.length > 0 ? pool : homeContextHintOptions;
-      const randomIndex = Math.floor(Math.random() * source.length);
-      return source[randomIndex];
-    });
-  }, [homeContextHintOptions, loadingPlanning]);
+  useEffect(() => {
+    if (!movingDeadlineTarget) return;
+    setMovingDeadlineDate(movingDeadlineTarget.due_date ?? "");
+  }, [movingDeadlineTarget]);
 
   useEffect(() => {
     if (!shouldOnboard) return;
     router.replace("/welcome");
   }, [router, shouldOnboard]);
 
-  if (shouldOnboard) {
-    return null;
-  }
+  // --- Early returns ---
+  if (shouldOnboard) return null;
 
   if (isAuthed && !profileChecked) {
     return (
@@ -1237,7 +623,6 @@ export default function HomePage() {
                             <Icon name="arrow-right" size={22} />
                           </button>
                         </div>
-
                       </>
                     )}
                   </section>
