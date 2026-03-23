@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Nav from "@/components/Nav";
 import Button from "@/components/Button";
 import Icon from "@/components/Icon";
@@ -27,6 +27,8 @@ import {
   type TaskType,
 } from "@/lib/tasks";
 
+const PAGE_SIZE = 50;
+
 const PLAN_FILTER_OPTIONS = [
   { value: "TODO", label: "Da fare" },
   { value: "DONE", label: "Completati" },
@@ -38,6 +40,9 @@ export default function AllTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState(0);
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -48,6 +53,8 @@ export default function AllTasksPage() {
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [completeTarget, setCompleteTarget] = useState<Task | null>(null);
+
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!completeTarget) return;
@@ -83,9 +90,43 @@ export default function AllTasksPage() {
     [visibleProjects]
   );
 
+  // Builds the filtered task query for a given page offset.
+  // Extracted to avoid duplicating filter logic between loadData and loadMore.
+  const buildTaskQuery = useCallback(
+    (offset: number) => {
+      let query = supabase
+        .from("tasks")
+        .select(
+          "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name,type)"
+        )
+        .eq("type", activeType)
+        .order("priority", { ascending: true, nullsFirst: false })
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .order("title", { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (planFilter === "TODO") {
+        query = query.in("status", ["OPEN", "INBOX"]);
+      } else if (planFilter === "DONE") {
+        query = query.eq("status", "DONE");
+      }
+      if (priorityFilter !== "ALL") {
+        query = query.eq("priority", priorityFilter);
+      }
+      if (projectFilter !== "ALL") {
+        query = query.eq("project_id", projectFilter);
+      }
+      return query;
+    },
+    [activeType, planFilter, priorityFilter, projectFilter]
+  );
+
+  // Initial load (called on mount and filter changes): resets the list.
   const loadData = useCallback(async () => {
     setLoading(true);
     setErr(null);
+    setHasMore(false);
+    setNextOffset(0);
 
     try {
       const session = await ensureSession();
@@ -100,31 +141,9 @@ export default function AllTasksPage() {
       return;
     }
 
-    let taskQuery = supabase
-      .from("tasks")
-      .select(
-        "id,title,type,due_date,work_days,status,priority,project_id,notes,project:projects(id,name,type)"
-      )
-      .eq("type", activeType)
-      .order("priority", { ascending: true, nullsFirst: false })
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .order("title", { ascending: true });
-
-    if (planFilter === "TODO") {
-      taskQuery = taskQuery.in("status", ["OPEN", "INBOX"]);
-    } else if (planFilter === "DONE") {
-      taskQuery = taskQuery.eq("status", "DONE");
-    }
-    if (priorityFilter !== "ALL") {
-      taskQuery = taskQuery.eq("priority", priorityFilter);
-    }
-    if (projectFilter !== "ALL") {
-      taskQuery = taskQuery.eq("project_id", projectFilter);
-    }
-
     const [{ data, error }, { data: projectsData, error: projectsError }] =
       await Promise.all([
-        taskQuery,
+        buildTaskQuery(0),
         supabase.from("projects").select("id,name,type").order("name"),
       ]);
 
@@ -136,11 +155,32 @@ export default function AllTasksPage() {
       return;
     }
 
-    setTasks(normalizeTasks(data ?? []));
+    const normalized = normalizeTasks(data ?? []);
+    setTasks(normalized);
     setProjects((projectsData ?? []) as Project[]);
+    setHasMore((data?.length ?? 0) === PAGE_SIZE);
+    setNextOffset(PAGE_SIZE);
     setLoading(false);
-  }, [activeType, planFilter, priorityFilter, projectFilter]);
+  }, [buildTaskQuery]);
 
+  // Loads the next page and appends results.
+  // nextOffset tracks the correct fetch position independently from tasks.length
+  // so that optimistic removals (e.g. completing a task) don't skew the offset.
+  const loadMore = useCallback(async () => {
+    if (!hasMore || loadingMore || loading) return;
+    setLoadingMore(true);
+
+    const { data, error } = await buildTaskQuery(nextOffset);
+
+    if (!error && data) {
+      setTasks((prev) => [...prev, ...normalizeTasks(data)]);
+      setHasMore(data.length === PAGE_SIZE);
+      setNextOffset((prev) => prev + PAGE_SIZE);
+    }
+    setLoadingMore(false);
+  }, [hasMore, loadingMore, loading, nextOffset, buildTaskQuery]);
+
+  // Trigger initial load (and re-load on filter changes).
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       void loadData();
@@ -149,6 +189,24 @@ export default function AllTasksPage() {
       window.clearTimeout(timerId);
     };
   }, [loadData]);
+
+  // IntersectionObserver: load next page when sentinel enters the viewport.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   async function markDone(task: Task) {
     setErr(null);
@@ -285,103 +343,110 @@ export default function AllTasksPage() {
                   <p className="meta-line">Nessun task qui.</p>
                 </div>
               ) : (
-                <ul className="list-stack">
-                  {tasks.map((task) => {
-                    const workSummary = formatWorkDaysSummary(task.work_days ?? []);
-                    const workDaysCount = task.work_days?.length ?? 0;
-                    const workDaysLabel =
-                      workDaysCount === 1 ? "Giorno di lavoro" : "Giorni di lavoro";
-                    const planMeta =
-                      task.status === "DONE"
-                        ? "Stato: Completato"
-                        : task.status === "INBOX"
-                        ? `${workDaysLabel}: Da pianificare`
-                        : workSummary
-                        ? `${workDaysLabel}: ${workSummary}`
-                        : `${workDaysLabel}: Da pianificare`;
-                    const meta = joinMeta([
-                      planMeta,
-                      task.due_date ? `Scadenza: ${formatDisplayDate(task.due_date)}` : null,
-                    ]);
-                    const priorityMeta = getPriorityMeta(task.priority);
+                <>
+                  <ul className="list-stack">
+                    {tasks.map((task) => {
+                      const workSummary = formatWorkDaysSummary(task.work_days ?? []);
+                      const workDaysCount = task.work_days?.length ?? 0;
+                      const workDaysLabel =
+                        workDaysCount === 1 ? "Giorno di lavoro" : "Giorni di lavoro";
+                      const planMeta =
+                        task.status === "DONE"
+                          ? "Stato: Completato"
+                          : task.status === "INBOX"
+                          ? `${workDaysLabel}: Da pianificare`
+                          : workSummary
+                          ? `${workDaysLabel}: ${workSummary}`
+                          : `${workDaysLabel}: Da pianificare`;
+                      const meta = joinMeta([
+                        planMeta,
+                        task.due_date ? `Scadenza: ${formatDisplayDate(task.due_date)}` : null,
+                      ]);
+                      const priorityMeta = getPriorityMeta(task.priority);
 
-                    return (
-                      <ListRow
-                        key={task.id}
-                        className={`list-row-compact list-row-start task-row-slim ${
-                          task.status === "DONE" ? "task-row-completed" : ""
-                        } ${isMobile ? "task-row-mobile-actions" : ""}`.trim()}
-                      >
-                        <div className="flex items-center justify-between gap-3 w-full">
-                          <div className="min-w-0 task-row-copy">
-                            <p
-                              className={`task-title-text task-priority-title-${priorityMeta.tone}`}
-                            >
-                              {task.title}
-                            </p>
-                            <p className="text-sm text-slate-100 font-medium mt-1 truncate">
-                              {task.project?.name ?? "NESSUN PROGETTO"}
-                            </p>
-                            <p className="meta-line mt-1">{meta}</p>
-                            {task.notes?.trim() ? (
-                              <p className="meta-line mt-1 task-note-line">
-                                {task.notes.trim()}
+                      return (
+                        <ListRow
+                          key={task.id}
+                          className={`list-row-compact list-row-start task-row-slim ${
+                            task.status === "DONE" ? "task-row-completed" : ""
+                          } ${isMobile ? "task-row-mobile-actions" : ""}`.trim()}
+                        >
+                          <div className="flex items-center justify-between gap-3 w-full">
+                            <div className="min-w-0 task-row-copy">
+                              <p
+                                className={`task-title-text task-priority-title-${priorityMeta.tone}`}
+                              >
+                                {task.title}
                               </p>
-                            ) : null}
-                          </div>
+                              <p className="text-sm text-slate-100 font-medium mt-1 truncate">
+                                {task.project?.name ?? UI.NO_PROJECT}
+                              </p>
+                              <p className="meta-line mt-1">{meta}</p>
+                              {task.notes?.trim() ? (
+                                <p className="meta-line mt-1 task-note-line">
+                                  {task.notes.trim()}
+                                </p>
+                              ) : null}
+                            </div>
 
-                          {isMobile ? (
-                            <div className="task-row-icon-actions stretched-guard">
-                              <button
-                                type="button"
-                                className="task-row-icon-btn task-row-icon-btn-edit"
-                                onClick={() => setEditingTask(task)}
-                                aria-label={`Modifica ${task.title}`}
-                                title="Modifica"
-                              >
-                                <Icon name="edit" size={15} />
-                              </button>
-                              {task.status !== "DONE" ? (
+                            {isMobile ? (
+                              <div className="task-row-icon-actions stretched-guard">
                                 <button
                                   type="button"
-                                  className="task-row-icon-btn task-row-icon-btn-complete"
-                                  disabled={markingId === task.id}
-                                  onClick={() => setCompleteTarget(task)}
-                                  aria-label={`Completa ${task.title}`}
-                                  title="Completa"
+                                  className="task-row-icon-btn task-row-icon-btn-edit"
+                                  onClick={() => setEditingTask(task)}
+                                  aria-label={`Modifica ${task.title}`}
+                                  title="Modifica"
                                 >
-                                  <Icon name="check" size={15} />
+                                  <Icon name="edit" size={15} />
                                 </button>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <div className="task-row-actions stretched-guard">
-                              <Button
-                                variant="tertiary"
-                                size="sm"
-                                onClick={() => setEditingTask(task)}
-                              >
-                                Modifica
-                              </Button>
-                              {task.status !== "DONE" ? (
-                                <button
-                                  type="button"
-                                  className="task-complete-btn"
-                                  disabled={markingId === task.id}
-                                  onClick={() => setCompleteTarget(task)}
-                                  aria-label={`Completa ${task.title}`}
-                                  title="Completa"
+                                {task.status !== "DONE" ? (
+                                  <button
+                                    type="button"
+                                    className="task-row-icon-btn task-row-icon-btn-complete"
+                                    disabled={markingId === task.id}
+                                    onClick={() => setCompleteTarget(task)}
+                                    aria-label={`Completa ${task.title}`}
+                                    title="Completa"
+                                  >
+                                    <Icon name="check" size={15} />
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <div className="task-row-actions stretched-guard">
+                                <Button
+                                  variant="tertiary"
+                                  size="sm"
+                                  onClick={() => setEditingTask(task)}
                                 >
-                                  Completa
-                                </button>
-                              ) : null}
-                            </div>
-                          )}
-                        </div>
-                      </ListRow>
-                    );
-                  })}
-                </ul>
+                                  {UI.EDIT}
+                                </Button>
+                                {task.status !== "DONE" ? (
+                                  <button
+                                    type="button"
+                                    className="task-complete-btn"
+                                    disabled={markingId === task.id}
+                                    onClick={() => setCompleteTarget(task)}
+                                    aria-label={`Completa ${task.title}`}
+                                    title="Completa"
+                                  >
+                                    {UI.COMPLETE}
+                                  </button>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        </ListRow>
+                      );
+                    })}
+                  </ul>
+
+                  {/* Sentinel: triggers loadMore when it enters the viewport */}
+                  <div ref={sentinelRef} aria-hidden="true" />
+
+                  {loadingMore ? <SkeletonList rows={3} /> : null}
+                </>
               )}
             </div>
           )}
