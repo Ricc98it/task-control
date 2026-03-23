@@ -3,9 +3,13 @@ import {
   GoogleApiError,
   type GoogleCalendarEvent,
   type GoogleCalendarResponseStatus,
-  refreshGoogleAccessToken,
   updateGoogleCalendarEventResponseStatus,
 } from "@/lib/googleCalendar";
+import {
+  decryptIntegrationTokens,
+  ensureValidAccessToken,
+  persistIntegrationTokens,
+} from "@/lib/googleTokens";
 import {
   ServerAuthError,
   requireUserFromAuthorizationHeader,
@@ -146,69 +150,6 @@ function extractSelfAttendeeEmail(attendees: unknown): string | null {
   return null;
 }
 
-async function ensureValidAccessToken(
-  integration: CalendarIntegrationRow,
-  forceRefresh = false
-): Promise<{
-  accessToken: string;
-  refreshToken: string | null;
-  tokenExpiresAt: string | null;
-  tokenScope: string | null;
-}> {
-  const expiresAtMs = integration.token_expires_at
-    ? new Date(integration.token_expires_at).getTime()
-    : 0;
-  const isExpiredOrMissing =
-    forceRefresh ||
-    !integration.access_token ||
-    !expiresAtMs ||
-    expiresAtMs <= Date.now() + 60_000;
-
-  if (!isExpiredOrMissing) {
-    return {
-      accessToken: integration.access_token!,
-      refreshToken: integration.refresh_token,
-      tokenExpiresAt: integration.token_expires_at,
-      tokenScope: integration.token_scope,
-    };
-  }
-
-  if (!integration.refresh_token) {
-    throw new Error("Google refresh token missing. Reconnect the integration.");
-  }
-
-  const refreshed = await refreshGoogleAccessToken(integration.refresh_token);
-  const tokenExpiresAt = new Date(Date.now() + refreshed.expiresIn * 1000).toISOString();
-  return {
-    accessToken: refreshed.accessToken,
-    refreshToken: refreshed.refreshToken,
-    tokenExpiresAt,
-    tokenScope: refreshed.scope,
-  };
-}
-
-async function persistIntegrationTokens(
-  integrationId: string,
-  tokenState: {
-    accessToken: string;
-    refreshToken: string | null;
-    tokenExpiresAt: string | null;
-    tokenScope: string | null;
-  }
-) {
-  const supabaseAdmin = getSupabaseAdminClient();
-  await supabaseAdmin
-    .from("calendar_integrations")
-    .update({
-      access_token: tokenState.accessToken,
-      refresh_token: tokenState.refreshToken,
-      token_expires_at: tokenState.tokenExpiresAt,
-      token_scope: tokenState.tokenScope,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", integrationId);
-}
-
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUserFromAuthorizationHeader(
@@ -263,7 +204,7 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
-    const integration = integrationData as CalendarIntegrationRow;
+    const integration = decryptIntegrationTokens(integrationData as CalendarIntegrationRow);
 
     const attendeeEmail =
       extractSelfAttendeeEmail(eventRow.attendees) ?? integration.provider_account_email;

@@ -3,6 +3,7 @@ import {
   exchangeGoogleAuthorizationCode,
   fetchGooglePrimaryCalendar,
 } from "@/lib/googleCalendar";
+import { decryptToken, encryptToken } from "@/lib/tokenCrypto";
 import { verifyGoogleOAuthState } from "@/lib/googleOAuthState";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 
@@ -55,9 +56,12 @@ export async function GET(request: NextRequest) {
       .eq("provider", "GOOGLE")
       .maybeSingle();
 
-    const existingRefreshToken = (
+    const rawExistingRefreshToken = (
       existingConnection as { refresh_token: string | null } | null
-    )?.refresh_token;
+    )?.refresh_token ?? null;
+    const existingRefreshToken = rawExistingRefreshToken
+      ? decryptToken(rawExistingRefreshToken)
+      : null;
     const refreshToken = tokenResponse.refreshToken ?? existingRefreshToken ?? null;
 
     const expiresAt = new Date(Date.now() + tokenResponse.expiresIn * 1000).toISOString();
@@ -67,8 +71,8 @@ export async function GET(request: NextRequest) {
       provider: "GOOGLE",
       provider_account_email: primaryCalendar.calendarId || primaryCalendar.summary,
       calendar_id: primaryCalendar.calendarId,
-      access_token: tokenResponse.accessToken,
-      refresh_token: refreshToken,
+      access_token: encryptToken(tokenResponse.accessToken),
+      refresh_token: refreshToken ? encryptToken(refreshToken) : null,
       token_scope: tokenResponse.scope,
       token_expires_at: expiresAt,
       connection_status: "ACTIVE",
