@@ -79,7 +79,7 @@ function normalizeDateTime(value?: string | null): string | null {
 
 function normalizeAllDayDate(value?: string): string | null {
   if (!value) return null;
-  const date = new Date(`${value}T00:00:00.000Z`);
+  const date = new Date(`${value}T12:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }

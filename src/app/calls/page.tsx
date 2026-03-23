@@ -164,6 +164,14 @@ function formatDateInputValue(value: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+// For all-day events stored as UTC timestamps, use UTC date parts to avoid timezone shifts.
+function formatDateInputValueUTC(value: Date): string {
+  const year = value.getUTCFullYear();
+  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(value.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function formatTimeInputValue(value: Date): string {
   const hour = String(value.getHours()).padStart(2, "0");
   const minute = String(value.getMinutes()).padStart(2, "0");
@@ -176,7 +184,10 @@ function getDefaultEventEditFormState(event: CalendarEvent): EventEditFormState 
   const fallbackEnd = new Date(startDate.getTime() + 30 * 60 * 1000);
   const safeEnd = endDateRaw && endDateRaw > startDate ? endDateRaw : fallbackEnd;
 
-  const startDateValue = formatDateInputValue(startDate);
+  // All-day events are stored as UTC noon timestamps: use UTC date methods to
+  // extract the correct calendar date regardless of the user's timezone.
+  const dateToString = event.is_all_day ? formatDateInputValueUTC : formatDateInputValue;
+  const startDateValue = dateToString(startDate);
   const allDayEndCandidate = new Date(safeEnd.getTime() - 24 * 60 * 60 * 1000);
   const allDayEndDateValue =
     allDayEndCandidate >= startDate ? allDayEndCandidate : startDate;
@@ -187,8 +198,8 @@ function getDefaultEventEditFormState(event: CalendarEvent): EventEditFormState 
     isAllDay: event.is_all_day,
     startDate: startDateValue,
     endDate: event.is_all_day
-      ? formatDateInputValue(allDayEndDateValue)
-      : formatDateInputValue(safeEnd),
+      ? dateToString(allDayEndDateValue)
+      : dateToString(safeEnd),
     startTime: formatTimeInputValue(startDate),
     endTime: formatTimeInputValue(safeEnd),
   };

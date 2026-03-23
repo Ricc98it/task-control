@@ -48,6 +48,12 @@ export default function SettingsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [syncInfo, setSyncInfo] = useState<string | null>(null);
 
+  const [timezone, setTimezone] = useState("");
+  const [timezoneInput, setTimezoneInput] = useState("");
+  const [timezoneSaving, setTimezoneSaving] = useState(false);
+  const [timezoneErr, setTimezoneErr] = useState<string | null>(null);
+  const [timezoneInfo, setTimezoneInfo] = useState<string | null>(null);
+
   const isConnected = useMemo(() => status?.connected === true, [status]);
 
   const loadStatus = useCallback(async () => {
@@ -75,9 +81,58 @@ export default function SettingsPage() {
     }
   }, [router]);
 
+  const loadProfile = useCallback(async () => {
+    try {
+      const accessToken = await getAccessTokenOrRedirect(router);
+      if (!accessToken) return;
+      const response = await fetch("/api/profile", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload = (await response.json()) as { timezone?: string; error?: string };
+      if (response.ok && payload.timezone) {
+        setTimezone(payload.timezone);
+        setTimezoneInput(payload.timezone);
+      }
+    } catch {
+      // Non-critical: silently ignore
+    }
+  }, [router]);
+
+  async function saveTimezone() {
+    const value = timezoneInput.trim();
+    if (!value || value === timezone) return;
+    setTimezoneSaving(true);
+    setTimezoneErr(null);
+    setTimezoneInfo(null);
+    try {
+      const accessToken = await getAccessTokenOrRedirect(router);
+      if (!accessToken) return;
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ timezone: value }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; timezone?: string; error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Salvataggio timezone non riuscito.");
+      }
+      setTimezone(payload.timezone ?? value);
+      setTimezoneInput(payload.timezone ?? value);
+      setTimezoneInfo("Timezone aggiornato.");
+    } catch (error) {
+      setTimezoneErr(error instanceof Error ? error.message : "Errore salvataggio timezone.");
+    } finally {
+      setTimezoneSaving(false);
+    }
+  }
+
   useEffect(() => {
     void loadStatus();
-  }, [loadStatus]);
+    void loadProfile();
+  }, [loadStatus, loadProfile]);
 
   async function handleConnect() {
     setBusyAction("connect");
@@ -278,6 +333,51 @@ export default function SettingsPage() {
               {err ? (
                 <p className="text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl">
                   {err}
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="mt-6">
+            <SectionHeader
+              title="Timezone"
+              subtitle="Usato per la sincronizzazione del calendario"
+            />
+            <div className="mt-4 glass-panel p-5 space-y-3">
+              <p className="meta-line">
+                Timezone attuale:{" "}
+                <span className="text-slate-100 font-medium">{timezone || "—"}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  className="glass-input flex-1"
+                  value={timezoneInput}
+                  onChange={(event) => {
+                    setTimezoneInput(event.target.value);
+                    setTimezoneErr(null);
+                    setTimezoneInfo(null);
+                  }}
+                  placeholder="es. Europe/Rome"
+                  aria-label="Timezone IANA"
+                  disabled={timezoneSaving}
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => void saveTimezone()}
+                  disabled={timezoneSaving || !timezoneInput.trim() || timezoneInput.trim() === timezone}
+                >
+                  {timezoneSaving ? "Salvo..." : "Salva"}
+                </Button>
+              </div>
+              {timezoneInfo ? (
+                <p className="text-sm text-emerald-200 border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 rounded-xl">
+                  {timezoneInfo}
+                </p>
+              ) : null}
+              {timezoneErr ? (
+                <p className="text-sm text-red-200 border border-red-500/30 bg-red-500/10 px-3 py-2 rounded-xl">
+                  {timezoneErr}
                 </p>
               ) : null}
             </div>
