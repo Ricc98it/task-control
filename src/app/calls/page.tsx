@@ -341,6 +341,93 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
+type TimedEventLayout = {
+  event: CalendarEvent;
+  segmentStart: Date;
+  segmentEnd: Date;
+  startMinutes: number;
+  endMinutes: number;
+  top: number;
+  height: number;
+  pixelHeight: number;
+  columnIndex: number;
+  columnCount: number;
+};
+
+function layoutOverlappingTimedEvents(segments: TimedEventLayout[]): TimedEventLayout[] {
+  if (segments.length <= 1) {
+    return segments.map((segment) => ({ ...segment, columnIndex: 0, columnCount: 1 }));
+  }
+
+  const sorted = [...segments].sort((left, right) => {
+    if (left.startMinutes !== right.startMinutes) {
+      return left.startMinutes - right.startMinutes;
+    }
+    const leftDuration = left.endMinutes - left.startMinutes;
+    const rightDuration = right.endMinutes - right.startMinutes;
+    return rightDuration - leftDuration;
+  });
+
+  const groups: TimedEventLayout[][] = [];
+  let currentGroup: TimedEventLayout[] = [];
+  let currentGroupEnd = -Infinity;
+
+  for (const segment of sorted) {
+    if (currentGroup.length === 0) {
+      currentGroup = [segment];
+      currentGroupEnd = segment.endMinutes;
+      continue;
+    }
+
+    if (segment.startMinutes < currentGroupEnd) {
+      currentGroup.push(segment);
+      currentGroupEnd = Math.max(currentGroupEnd, segment.endMinutes);
+      continue;
+    }
+
+    groups.push(currentGroup);
+    currentGroup = [segment];
+    currentGroupEnd = segment.endMinutes;
+  }
+
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup);
+  }
+
+  const positioned: TimedEventLayout[] = [];
+
+  for (const group of groups) {
+    const columnEndMinutes: number[] = [];
+    const withColumns = group.map((segment) => ({ ...segment, columnIndex: 0, columnCount: 1 }));
+
+    for (const segment of withColumns) {
+      let column = 0;
+      while (
+        column < columnEndMinutes.length &&
+        segment.startMinutes < columnEndMinutes[column]
+      ) {
+        column += 1;
+      }
+
+      if (column === columnEndMinutes.length) {
+        columnEndMinutes.push(segment.endMinutes);
+      } else {
+        columnEndMinutes[column] = segment.endMinutes;
+      }
+
+      segment.columnIndex = column;
+    }
+
+    const totalColumns = Math.max(1, columnEndMinutes.length);
+    for (const segment of withColumns) {
+      segment.columnCount = totalColumns;
+      positioned.push(segment);
+    }
+  }
+
+  return positioned;
+}
+
 type IosToggleRowProps = {
   label: string;
   checked: boolean;
@@ -516,6 +603,7 @@ export default function CallsPage() {
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     []
   );
+  const todayIso = useMemo(() => formatISODate(new Date()), []);
 
   const days = useMemo(
     () =>
@@ -1578,19 +1666,32 @@ export default function CallsPage() {
                 style={{ gridTemplateColumns: `72px repeat(${days.length}, minmax(0, 1fr))` }}
               >
               <div className="bg-slate-900/30 border-r border-slate-700/30" />
-              {days.map((day) => (
-                <div
-                  key={day.id}
-                  className="bg-slate-900/30 border-r last:border-r-0 border-slate-700/30 px-3 py-2"
-                >
-                  <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
-                    {day.label}
-                  </p>
-                  <p className="text-sm text-slate-100 font-medium">
-                    {formatDisplayDate(day.id)}
-                  </p>
-                </div>
-              ))}
+              {days.map((day) => {
+                const isTodayColumn = day.id === todayIso;
+                return (
+                  <div
+                    key={day.id}
+                    className={`calls-week-day-head bg-slate-900/30 border-r last:border-r-0 border-slate-700/30 px-3 py-2 ${
+                      isTodayColumn ? "calls-week-day-head-today" : ""
+                    }`.trim()}
+                  >
+                    <p
+                      className={`calls-week-day-label text-xs uppercase tracking-[0.14em] text-slate-400 ${
+                        isTodayColumn ? "calls-week-day-label-today" : ""
+                      }`.trim()}
+                    >
+                      {day.label}
+                    </p>
+                    <p
+                      className={`calls-week-day-date text-sm text-slate-100 font-medium ${
+                        isTodayColumn ? "calls-week-day-date-today" : ""
+                      }`.trim()}
+                    >
+                      {formatDisplayDate(day.id)}
+                    </p>
+                  </div>
+                );
+              })}
 
               <div
                 className="relative border-r border-slate-700/30 bg-slate-900/20"
@@ -1620,11 +1721,14 @@ export default function CallsPage() {
                 const dayStart = new Date(day.date);
                 dayStart.setHours(0, 0, 0, 0);
                 const dayEnd = addDays(dayStart, 1);
+                const isTodayColumn = day.id === todayIso;
 
                 return (
                   <div
                     key={`grid-${day.id}`}
-                    className="relative border-r last:border-r-0 border-slate-700/30 bg-slate-950/15"
+                    className={`calls-week-day-column relative border-r last:border-r-0 border-slate-700/30 bg-slate-950/15 ${
+                      isTodayColumn ? "calls-week-day-column-today" : ""
+                    }`.trim()}
                     style={{ height: GRID_HEIGHT }}
                   >
                     {hours.map((hour) => {
@@ -1667,42 +1771,61 @@ export default function CallsPage() {
                       );
                     })}
 
-                    {timedEvents.map((event) => {
-                      const startsAt = asDate(event.starts_at);
-                      if (!startsAt) return null;
-                      const endsAt = asDate(event.ends_at);
-                      const fallbackEnd = new Date(startsAt.getTime() + 30 * 60 * 1000);
-                      const eventEnd =
-                        endsAt && endsAt.getTime() > startsAt.getTime()
-                          ? endsAt
-                          : fallbackEnd;
-                      const segmentStart = startsAt < dayStart ? dayStart : startsAt;
-                      const segmentEnd = eventEnd > dayEnd ? dayEnd : eventEnd;
+                    {layoutOverlappingTimedEvents(
+                      timedEvents
+                        .map((event): TimedEventLayout | null => {
+                          const startsAt = asDate(event.starts_at);
+                          if (!startsAt) return null;
+                          const endsAt = asDate(event.ends_at);
+                          const fallbackEnd = new Date(startsAt.getTime() + 30 * 60 * 1000);
+                          const eventEnd =
+                            endsAt && endsAt.getTime() > startsAt.getTime()
+                              ? endsAt
+                              : fallbackEnd;
+                          const segmentStart = startsAt < dayStart ? dayStart : startsAt;
+                          const segmentEnd = eventEnd > dayEnd ? dayEnd : eventEnd;
 
-                      if (segmentEnd.getTime() <= segmentStart.getTime()) return null;
+                          if (segmentEnd.getTime() <= segmentStart.getTime()) return null;
 
-                      const startMinutes =
-                        segmentStart.getHours() * 60 + segmentStart.getMinutes();
-                      const endMinutes = segmentEnd.getHours() * 60 + segmentEnd.getMinutes();
-                      const rangeStart = HOURS_START * 60;
-                      const rangeEnd = HOURS_END * 60;
-                      if (endMinutes <= rangeStart || startMinutes >= rangeEnd) return null;
+                          const startMinutes =
+                            segmentStart.getHours() * 60 + segmentStart.getMinutes();
+                          const endMinutes = segmentEnd.getHours() * 60 + segmentEnd.getMinutes();
+                          const rangeStart = HOURS_START * 60;
+                          const rangeEnd = HOURS_END * 60;
+                          if (endMinutes <= rangeStart || startMinutes >= rangeEnd) return null;
 
-                      const clampedStart = clamp(startMinutes, rangeStart, rangeEnd);
-                      const clampedEnd = clamp(endMinutes, rangeStart, rangeEnd);
-                      const totalRange = rangeEnd - rangeStart;
-                      const top = ((clampedStart - rangeStart) / totalRange) * 100;
-                      const minHeightRatio = (EVENT_MIN_HEIGHT_PX / GRID_HEIGHT) * 100;
-                      const durationMinutes = Math.max(clampedEnd - clampedStart, 0);
-                      const height = Math.max(
-                        (durationMinutes / totalRange) * 100,
-                        minHeightRatio
-                      );
-                      const pixelHeight = (height / 100) * GRID_HEIGHT;
-                      const ultraTinyEvent = pixelHeight <= 15;
-                      const tinyEvent = pixelHeight <= 18;
-                      const compactEvent = pixelHeight <= 24;
-                      const showTimeLine = pixelHeight > 22;
+                          const clampedStart = clamp(startMinutes, rangeStart, rangeEnd);
+                          const clampedEnd = clamp(endMinutes, rangeStart, rangeEnd);
+                          const totalRange = rangeEnd - rangeStart;
+                          const top = ((clampedStart - rangeStart) / totalRange) * 100;
+                          const minHeightRatio = (EVENT_MIN_HEIGHT_PX / GRID_HEIGHT) * 100;
+                          const durationMinutes = Math.max(clampedEnd - clampedStart, 0);
+                          const height = Math.max(
+                            (durationMinutes / totalRange) * 100,
+                            minHeightRatio
+                          );
+                          const pixelHeight = (height / 100) * GRID_HEIGHT;
+
+                          return {
+                            event,
+                            segmentStart,
+                            segmentEnd,
+                            startMinutes,
+                            endMinutes,
+                            top,
+                            height,
+                            pixelHeight,
+                            columnIndex: 0,
+                            columnCount: 1,
+                          };
+                        })
+                        .filter((segment): segment is TimedEventLayout => segment !== null)
+                    ).map((layout) => {
+                      const { event } = layout;
+                      const ultraTinyEvent = layout.pixelHeight <= 15;
+                      const tinyEvent = layout.pixelHeight <= 18;
+                      const compactEvent = layout.pixelHeight <= 24;
+                      const showTimeLine = layout.pixelHeight > 22;
                       const baseColor = event.calendarColor ?? "#3b82f6";
                       const borderColor = hexToRgba(baseColor, 0.62);
                       const backgroundColor = hexToRgba(
@@ -1711,7 +1834,7 @@ export default function CallsPage() {
                       );
                       const titleText = showTimeLine
                         ? event.title ?? "Call"
-                        : `${event.title ?? "Call"}, ${formatTime(segmentStart)}`;
+                        : `${event.title ?? "Call"}, ${formatTime(layout.segmentStart)}`;
                       const dynamicFontSize = ultraTinyEvent
                         ? "7.2px"
                         : tinyEvent
@@ -1724,21 +1847,33 @@ export default function CallsPage() {
                         : tinyEvent
                         ? "1px 5px"
                         : "2px 6px";
+                      const sideInsetPx = 4;
+                      const overlapGapPx = 2;
+                      const widthPercent = 100 / layout.columnCount;
+                      const leftPercent = widthPercent * layout.columnIndex;
+                      const totalGapPx = Math.max(0, layout.columnCount - 1) * overlapGapPx;
 
                       return (
                         <button
                           type="button"
                           key={`${event.id}-${day.id}-${event.ownerEmail ?? "self"}`}
-                          className="absolute left-1 right-1 rounded border text-left cursor-pointer calls-event-card"
+                          className="absolute rounded border text-left cursor-pointer calls-event-card"
                           style={{
-                            top: `${top}%`,
-                            height: `${height}%`,
+                            top: `${layout.top}%`,
+                            height: `${layout.height}%`,
+                            left: `calc(${leftPercent}% + ${sideInsetPx}px + ${
+                              layout.columnIndex * overlapGapPx
+                            }px)`,
+                            width: `calc(${widthPercent}% - ${sideInsetPx * 2}px - ${
+                              totalGapPx / layout.columnCount
+                            }px)`,
                             padding: cardPadding,
                             fontSize: dynamicFontSize,
                             lineHeight: ultraTinyEvent ? "1.05" : tinyEvent ? "1.12" : "1.08",
                             borderColor,
                             backgroundColor,
                             color: "rgba(226, 232, 240, 0.96)",
+                            zIndex: 2 + layout.columnIndex,
                           }}
                           title={event.title ?? "Call"}
                           onClick={() => setSelectedEvent(event)}
@@ -1746,7 +1881,7 @@ export default function CallsPage() {
                           <p className={`truncate ${tinyEvent ? "" : "font-medium"}`}>{titleText}</p>
                           {showTimeLine ? (
                             <p className="truncate text-slate-200/90">
-                              {formatTime(segmentStart)} - {formatTime(segmentEnd)}
+                              {formatTime(layout.segmentStart)} - {formatTime(layout.segmentEnd)}
                             </p>
                           ) : null}
                         </button>
