@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import {
   GoogleApiError,
   type GoogleCalendarEvent,
@@ -24,6 +25,7 @@ type CalendarIntegrationRow = {
   token_expires_at: string | null;
   token_scope: string | null;
   sync_token: string | null;
+  connection_status: string;
 };
 
 function getReadableSyncErrorMessage(error: unknown): string {
@@ -230,12 +232,70 @@ async function runSync(options: {
     })
     .eq("id", integrationWithToken.id);
 
-  return {
-    fetchedCount,
-    upsertedCount,
-    cancelledCount,
-    nextSyncToken: nextSyncToken ?? integrationWithToken.sync_token,
+  return { fetchedCount, upsertedCount, cancelledCount };
+}
+
+async function runSyncBackground(
+  integration: CalendarIntegrationRow,
+  forceFullSync: boolean
+): Promise<void> {
+  const supabaseAdmin = getSupabaseAdminClient();
+
+  const markError = async (error: unknown) => {
+    const message = getReadableSyncErrorMessage(error);
+    await supabaseAdmin
+      .from("calendar_integrations")
+      .update({
+        connection_status: "ERROR",
+        last_sync_error: message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", integration.id);
   };
+
+  try {
+    await runSync({ integration, forceFullSync });
+    return;
+  } catch (error) {
+    // Sync token expired — retry as full sync
+    if (
+      error instanceof GoogleApiError &&
+      error.status === 410 &&
+      !forceFullSync &&
+      integration.sync_token
+    ) {
+      try {
+        await runSync({
+          integration: { ...integration, sync_token: null },
+          forceFullSync: true,
+        });
+        return;
+      } catch (retryError) {
+        await markError(retryError);
+        return;
+      }
+    }
+
+    // Access token rejected — force refresh and retry
+    if (
+      error instanceof GoogleApiError &&
+      error.status === 401 &&
+      integration.refresh_token
+    ) {
+      try {
+        await runSync({
+          integration: { ...integration, access_token: null, token_expires_at: null },
+          forceFullSync,
+        });
+        return;
+      } catch (retryError) {
+        await markError(retryError);
+        return;
+      }
+    }
+
+    await markError(error);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -256,7 +316,7 @@ export async function POST(request: NextRequest) {
     const { data: integration, error } = await supabaseAdmin
       .from("calendar_integrations")
       .select(
-        "id,user_id,calendar_id,access_token,refresh_token,token_expires_at,token_scope,sync_token"
+        "id,user_id,calendar_id,access_token,refresh_token,token_expires_at,token_scope,sync_token,connection_status"
       )
       .eq("user_id", user.id)
       .eq("provider", "GOOGLE")
@@ -271,75 +331,28 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
     const integrationRow = decryptIntegrationTokens(integration as CalendarIntegrationRow);
 
-    try {
-      const result = await runSync({
-        integration: integrationRow,
-        forceFullSync,
-      });
-      return NextResponse.json({
-        ok: true,
-        ...result,
-      });
-    } catch (error) {
-      if (
-        error instanceof GoogleApiError &&
-        error.status === 410 &&
-        !forceFullSync &&
-        integrationRow.sync_token
-      ) {
-        const retryResult = await runSync({
-          integration: {
-            ...integrationRow,
-            sync_token: null,
-          },
-          forceFullSync: true,
-        });
-        return NextResponse.json({
-          ok: true,
-          fullResyncTriggered: true,
-          ...retryResult,
-        });
-      }
-
-      let finalError: unknown = error;
-      if (
-        error instanceof GoogleApiError &&
-        error.status === 401 &&
-        integrationRow.refresh_token
-      ) {
-        try {
-          const retryResult = await runSync({
-            integration: {
-              ...integrationRow,
-              access_token: null,
-              token_expires_at: null,
-            },
-            forceFullSync,
-          });
-          return NextResponse.json({
-            ok: true,
-            accessTokenRefreshed: true,
-            ...retryResult,
-          });
-        } catch (retryError) {
-          finalError = retryError;
-        }
-      }
-
-      const message = getReadableSyncErrorMessage(finalError);
-      await supabaseAdmin
-        .from("calendar_integrations")
-        .update({
-          connection_status: "ERROR",
-          last_sync_error: message,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", integrationRow.id);
-
-      return NextResponse.json({ error: message }, { status: 500 });
+    // If a sync is already running, return 202 without launching a second one
+    if (integrationRow.connection_status === "SYNCING") {
+      return NextResponse.json({ ok: true, syncing: true, alreadySyncing: true }, { status: 202 });
     }
+
+    // Mark as syncing before responding
+    await supabaseAdmin
+      .from("calendar_integrations")
+      .update({
+        connection_status: "SYNCING",
+        last_sync_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", integrationRow.id);
+
+    // Launch sync in background — Vercel keeps the function alive until resolved
+    waitUntil(runSyncBackground(integrationRow, forceFullSync));
+
+    return NextResponse.json({ ok: true, syncing: true }, { status: 202 });
   } catch (error) {
     if (error instanceof ServerAuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/components/Button";
 import Nav from "@/components/Nav";
@@ -54,7 +54,18 @@ export default function SettingsPage() {
   const [timezoneErr, setTimezoneErr] = useState<string | null>(null);
   const [timezoneInfo, setTimezoneInfo] = useState<string | null>(null);
 
+  const syncPollRef = useRef<number | null>(null);
+
   const isConnected = useMemo(() => status?.connected === true, [status]);
+
+  function stopSyncPolling() {
+    if (syncPollRef.current !== null) {
+      window.clearInterval(syncPollRef.current);
+      syncPollRef.current = null;
+    }
+  }
+
+  useEffect(() => stopSyncPolling, []);
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -165,9 +176,14 @@ export default function SettingsPage() {
     setBusyAction("sync");
     setErr(null);
     setSyncInfo(null);
+    stopSyncPolling();
+
     try {
       const accessToken = await getAccessTokenOrRedirect(router);
-      if (!accessToken) return;
+      if (!accessToken) {
+        setBusyAction(null);
+        return;
+      }
 
       const response = await fetch("/api/integrations/google/sync", {
         method: "POST",
@@ -177,23 +193,47 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({ forceFullSync }),
       });
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        upsertedCount?: number;
-        cancelledCount?: number;
-      };
+      const payload = (await response.json()) as { ok?: boolean; syncing?: boolean; error?: string };
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error ?? "Sync non riuscita.");
       }
-      setSyncInfo(
-        `Sync completata: ${payload.upsertedCount ?? 0} eventi aggiornati, ${payload.cancelledCount ?? 0} cancellati.`
-      );
-      await loadStatus();
+
+      // Sync is running in background — poll /status every 2s until connectionStatus !== SYNCING
+      const startTime = Date.now();
+      syncPollRef.current = window.setInterval(() => {
+        void (async () => {
+          if (Date.now() - startTime > 120_000) {
+            stopSyncPolling();
+            setBusyAction(null);
+            setErr("Sync non completata entro 2 minuti. Riprova.");
+            return;
+          }
+          try {
+            const pollToken = await getAccessTokenOrRedirect(router);
+            if (!pollToken) { stopSyncPolling(); setBusyAction(null); return; }
+            const statusRes = await fetch("/api/integrations/google/status", {
+              headers: { Authorization: `Bearer ${pollToken}` },
+            });
+            if (!statusRes.ok) return;
+            const statusPayload = (await statusRes.json()) as GoogleStatus;
+            if (statusPayload.connectionStatus !== "SYNCING") {
+              stopSyncPolling();
+              setStatus(statusPayload);
+              setBusyAction(null);
+              if (statusPayload.connectionStatus === "ERROR") {
+                setErr(statusPayload.lastSyncError ?? "Sync terminata con errore.");
+              } else {
+                setSyncInfo("Sync completata.");
+              }
+            }
+          } catch {
+            // poll error — will retry on next tick
+          }
+        })();
+      }, 2000);
     } catch (error) {
-      setErr(error instanceof Error ? error.message : "Errore durante la sync.");
-    } finally {
       setBusyAction(null);
+      setErr(error instanceof Error ? error.message : "Errore durante la sync.");
     }
   }
 
