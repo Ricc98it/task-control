@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import Nav from "@/components/Nav";
 import Button from "@/components/Button";
 import Icon from "@/components/Icon";
@@ -55,6 +56,24 @@ export default function AllTasksPage() {
   const [completeTarget, setCompleteTarget] = useState<Task | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const listParentRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  // Measure the list container's offset from the top of the page so the
+  // window virtualizer positions items correctly.
+  useLayoutEffect(() => {
+    if (listParentRef.current) {
+      setScrollMargin(listParentRef.current.offsetTop);
+    }
+  }, [loading]); // re-measure when loading state changes (toolbar above may shift layout)
+
+  const rowVirtualizer = useWindowVirtualizer({
+    count: tasks.length,
+    estimateSize: () => 88,
+    gap: 10, // matches .list-stack { gap: 10px }
+    overscan: 5,
+    scrollMargin,
+  });
 
   useEffect(() => {
     if (!completeTarget) return;
@@ -344,103 +363,133 @@ export default function AllTasksPage() {
                 </div>
               ) : (
                 <>
-                  <ul className="list-stack">
-                    {tasks.map((task) => {
-                      const workSummary = formatWorkDaysSummary(task.work_days ?? []);
-                      const workDaysCount = task.work_days?.length ?? 0;
-                      const workDaysLabel =
-                        workDaysCount === 1 ? "Giorno di lavoro" : "Giorni di lavoro";
-                      const planMeta =
-                        task.status === "DONE"
-                          ? "Stato: Completato"
-                          : task.status === "INBOX"
-                          ? `${workDaysLabel}: Da pianificare`
-                          : workSummary
-                          ? `${workDaysLabel}: ${workSummary}`
-                          : `${workDaysLabel}: Da pianificare`;
-                      const meta = joinMeta([
-                        planMeta,
-                        task.due_date ? `Scadenza: ${formatDisplayDate(task.due_date)}` : null,
-                      ]);
-                      const priorityMeta = getPriorityMeta(task.priority);
+                  {/* Virtual list parent: the virtualizer measures offsetTop from here */}
+                  <div ref={listParentRef}>
+                    <ul
+                      style={{
+                        height: `${rowVirtualizer.getTotalSize()}px`,
+                        position: "relative",
+                        listStyle: "none",
+                        margin: 0,
+                        padding: 0,
+                      }}
+                    >
+                      {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                        const task = tasks[virtualRow.index];
+                        if (!task) return null;
 
-                      return (
-                        <ListRow
-                          key={task.id}
-                          className={`list-row-compact list-row-start task-row-slim ${
-                            task.status === "DONE" ? "task-row-completed" : ""
-                          } ${isMobile ? "task-row-mobile-actions" : ""}`.trim()}
-                        >
-                          <div className="flex items-center justify-between gap-3 w-full">
-                            <div className="min-w-0 task-row-copy">
-                              <p
-                                className={`task-title-text task-priority-title-${priorityMeta.tone}`}
-                              >
-                                {task.title}
-                              </p>
-                              <p className="text-sm text-slate-100 font-medium mt-1 truncate">
-                                {task.project?.name ?? UI.NO_PROJECT}
-                              </p>
-                              <p className="meta-line mt-1">{meta}</p>
-                              {task.notes?.trim() ? (
-                                <p className="meta-line mt-1 task-note-line">
-                                  {task.notes.trim()}
-                                </p>
-                              ) : null}
-                            </div>
+                        const workSummary = formatWorkDaysSummary(task.work_days ?? []);
+                        const workDaysCount = task.work_days?.length ?? 0;
+                        const workDaysLabel =
+                          workDaysCount === 1 ? "Giorno di lavoro" : "Giorni di lavoro";
+                        const planMeta =
+                          task.status === "DONE"
+                            ? "Stato: Completato"
+                            : task.status === "INBOX"
+                            ? `${workDaysLabel}: Da pianificare`
+                            : workSummary
+                            ? `${workDaysLabel}: ${workSummary}`
+                            : `${workDaysLabel}: Da pianificare`;
+                        const meta = joinMeta([
+                          planMeta,
+                          task.due_date
+                            ? `Scadenza: ${formatDisplayDate(task.due_date)}`
+                            : null,
+                        ]);
+                        const priorityMeta = getPriorityMeta(task.priority);
 
-                            {isMobile ? (
-                              <div className="task-row-icon-actions stretched-guard">
-                                <button
-                                  type="button"
-                                  className="task-row-icon-btn task-row-icon-btn-edit"
-                                  onClick={() => setEditingTask(task)}
-                                  aria-label={`Modifica ${task.title}`}
-                                  title="Modifica"
-                                >
-                                  <Icon name="edit" size={15} />
-                                </button>
-                                {task.status !== "DONE" ? (
-                                  <button
-                                    type="button"
-                                    className="task-row-icon-btn task-row-icon-btn-complete"
-                                    disabled={markingId === task.id}
-                                    onClick={() => setCompleteTarget(task)}
-                                    aria-label={`Completa ${task.title}`}
-                                    title="Completa"
+                        return (
+                          <li
+                            key={virtualRow.key}
+                            data-index={virtualRow.index}
+                            ref={rowVirtualizer.measureElement}
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              width: "100%",
+                              transform: `translateY(${
+                                virtualRow.start - rowVirtualizer.options.scrollMargin
+                              }px)`,
+                            }}
+                          >
+                            <ListRow
+                              className={`list-row-compact list-row-start task-row-slim ${
+                                task.status === "DONE" ? "task-row-completed" : ""
+                              } ${isMobile ? "task-row-mobile-actions" : ""}`.trim()}
+                            >
+                              <div className="flex items-center justify-between gap-3 w-full">
+                                <div className="min-w-0 task-row-copy">
+                                  <p
+                                    className={`task-title-text task-priority-title-${priorityMeta.tone}`}
                                   >
-                                    <Icon name="check" size={15} />
-                                  </button>
-                                ) : null}
+                                    {task.title}
+                                  </p>
+                                  <p className="text-sm text-slate-100 font-medium mt-1 truncate">
+                                    {task.project?.name ?? UI.NO_PROJECT}
+                                  </p>
+                                  <p className="meta-line mt-1">{meta}</p>
+                                  {task.notes?.trim() ? (
+                                    <p className="meta-line mt-1 task-note-line">
+                                      {task.notes.trim()}
+                                    </p>
+                                  ) : null}
+                                </div>
+
+                                {isMobile ? (
+                                  <div className="task-row-icon-actions stretched-guard">
+                                    <button
+                                      type="button"
+                                      className="task-row-icon-btn task-row-icon-btn-edit"
+                                      onClick={() => setEditingTask(task)}
+                                      aria-label={`Modifica ${task.title}`}
+                                      title="Modifica"
+                                    >
+                                      <Icon name="edit" size={15} />
+                                    </button>
+                                    {task.status !== "DONE" ? (
+                                      <button
+                                        type="button"
+                                        className="task-row-icon-btn task-row-icon-btn-complete"
+                                        disabled={markingId === task.id}
+                                        onClick={() => setCompleteTarget(task)}
+                                        aria-label={`Completa ${task.title}`}
+                                        title="Completa"
+                                      >
+                                        <Icon name="check" size={15} />
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <div className="task-row-actions stretched-guard">
+                                    <Button
+                                      variant="tertiary"
+                                      size="sm"
+                                      onClick={() => setEditingTask(task)}
+                                    >
+                                      {UI.EDIT}
+                                    </Button>
+                                    {task.status !== "DONE" ? (
+                                      <button
+                                        type="button"
+                                        className="task-complete-btn"
+                                        disabled={markingId === task.id}
+                                        onClick={() => setCompleteTarget(task)}
+                                        aria-label={`Completa ${task.title}`}
+                                        title="Completa"
+                                      >
+                                        {UI.COMPLETE}
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                )}
                               </div>
-                            ) : (
-                              <div className="task-row-actions stretched-guard">
-                                <Button
-                                  variant="tertiary"
-                                  size="sm"
-                                  onClick={() => setEditingTask(task)}
-                                >
-                                  {UI.EDIT}
-                                </Button>
-                                {task.status !== "DONE" ? (
-                                  <button
-                                    type="button"
-                                    className="task-complete-btn"
-                                    disabled={markingId === task.id}
-                                    onClick={() => setCompleteTarget(task)}
-                                    aria-label={`Completa ${task.title}`}
-                                    title="Completa"
-                                  >
-                                    {UI.COMPLETE}
-                                  </button>
-                                ) : null}
-                              </div>
-                            )}
-                          </div>
-                        </ListRow>
-                      );
-                    })}
-                  </ul>
+                            </ListRow>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
 
                   {/* Sentinel: triggers loadMore when it enters the viewport */}
                   <div ref={sentinelRef} aria-hidden="true" />
