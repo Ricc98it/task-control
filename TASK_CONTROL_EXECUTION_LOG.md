@@ -71,7 +71,7 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 
 - Data snapshot: `2026-03-24`
 - Ultimo aggiornamento: `2026-03-24`
-- Stato generale: `STABILIZZAZIONE + POLICY WORKSPACE COMPLETATE - TC-01..TC-09 COMPLETATI`
+- Stato generale: `STABILIZZAZIONE + REFACTOR + TEST MINIMI + HARDENING COMPLETATI (TC-01..TC-12 + AUDIT)`
 
 ### 4.1 Cosa e gia stato fatto
 - Analisi completa architettura frontend/backend/database.
@@ -88,13 +88,19 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
   - `TC-07` naming progetto uniformato su creazione inline Inbox.
   - `TC-08` migration policy collaborative workspace aggiunta (`projects`/`tasks`).
   - `TC-09` emissione `emitTasksUpdated()` aggiunta su scheduling Inbox.
+  - `TC-10` estrazione util comuni route Google (`src/app/api/integrations/google/utils.ts`).
+  - `TC-11` refactor strutturale pagina Calls (hook/data layer + componenti + utils/types).
+  - `TC-12` setup test automatici minimi con Vitest (suite API base).
+  - `HARDENING_AUDIT` completato (`npm audit` a zero vulnerabilita, upgrade `next`/`eslint-config-next` a `16.2.1`).
 - Verifiche correnti:
+  - `npm test` ok.
   - `npm run lint` ok.
   - `npm run build` ok.
 
 ### 4.2 Cosa NON e ancora stato fatto
-- Ticket `P1/P2` ancora da eseguire.
-- Nessun test automatico ancora introdotto nel progetto.
+- Test smoke E2E minimi su flussi principali (follow-up TC-12).
+- Ulteriore riduzione complessita UI `/calls` (estrazione modali principali in step successivo).
+- Hardening continuativo dipendenze (audit periodico schedulato).
 
 ---
 
@@ -588,9 +594,10 @@ Ogni avanzamento tecnico deve comparire qui in modo puntuale.
     `Can't resolve 'tailwindcss' in '/Users/riccardogiglio/Desktop/_dev_/Task Control'`
   - il warning appariva al primo `GET /`.
 - Correzione implementata:
-  - sostituito import modulare Tailwind in CSS globale:
+  - tentativo iniziale: sostituzione import modulare Tailwind in CSS globale:
     - da `@import "tailwindcss";`
     - a `@import "../../node_modules/tailwindcss/index.css";`
+  - nota: fix superato successivamente dal punto `12.4` (passaggio a `next dev --webpack` e ripristino import canonico).
 - File toccati:
   - `src/app/globals.css`
 - Verifica eseguita:
