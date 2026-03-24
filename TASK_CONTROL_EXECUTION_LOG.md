@@ -241,9 +241,9 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 ---
 
 ## 6) Prossime 3 azioni (sempre aggiornate)
-1. Hardening vulnerabilita npm (`npm audit`) con fix non distruttivi.
-2. Test smoke E2E minimi su flussi principali (follow-up TC-12).
-3. Riduzione ulteriore complessita UI `/calls` (estrazione modali principali in step successivo).
+1. Test smoke E2E minimi su flussi principali (follow-up TC-12).
+2. Riduzione ulteriore complessita UI `/calls` (estrazione modali principali in step successivo).
+3. Hardening continuativo dipendenze (audit periodico schedulato).
 
 ---
 
@@ -262,6 +262,7 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 - `2026-03-24`: avviato `TC-11` con estrazione tipi/helper/componenti da `calls/page.tsx`.
 - `2026-03-24`: `TC-11` completato con hook `useCallsData` + ulteriore decomposizione del file pagina.
 - `2026-03-24`: `TC-12` completato con suite Vitest API minima e script `npm test`.
+- `2026-03-24`: hardening dipendenze completato con upgrade `next`/`eslint-config-next` a `16.2.1` e audit a zero vulnerabilita.
 
 ---
 
@@ -522,6 +523,26 @@ Prossimo passo:
   - `npm run build` (ok).
 - Esito: `DONE`
 - Prossimo passo: `Hardening npm audit + test smoke E2E (follow-up)`
+
+#### 2026-03-24
+- Ticket: `HARDENING_AUDIT`
+- Stato prima: `TODO`
+- Azione eseguita:
+  - eseguito `npm audit fix` per risolvere vulnerabilita transitive non-breaking;
+  - effettuato upgrade mirato:
+    - `next` -> `16.2.1`
+    - `eslint-config-next` -> `16.2.1`
+  - lockfile aggiornato.
+- File toccati:
+  - `package.json`
+  - `package-lock.json`
+- Verifica eseguita:
+  - `npm audit` (0 vulnerabilities);
+  - `npm test` (ok);
+  - `npm run lint` (ok);
+  - `npm run build` (ok).
+- Esito: `DONE`
+- Prossimo passo: `test smoke E2E minimi`
 
 ---
 
