@@ -218,12 +218,13 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
   - funzioni duplicate ridotte e testabili.
 
 ### TC-11 - Refactor pagina Calls
-- Stato: `TODO`
+- Stato: `DONE`
 - Priorita: `P2`
 - Task tecnici:
-  - [ ] estrarre hook/data layer.
-  - [ ] estrarre componenti modali e blocchi UI.
-  - [ ] ridurre responsabilita nel file pagina.
+  - [x] estrarre hook/data layer.
+  - [x] estrarre componenti UI riusabili (time picker e iOS toggle).
+  - [x] estrarre helper/tipi in moduli dedicati.
+  - [x] ridurre responsabilita nel file pagina.
 - Done criteria:
   - file principale drasticamente piu piccolo e leggibile.
 
@@ -240,9 +241,9 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 ---
 
 ## 6) Prossime 3 azioni (sempre aggiornate)
-1. TC-11 - refactor strutturale pagina Calls.
-2. TC-12 - introdurre test automatici minimi.
-3. Hardening vulnerabilita npm (`npm audit`) con fix non distruttivi.
+1. TC-12 - introdurre test automatici minimi.
+2. Hardening vulnerabilita npm (`npm audit`) con fix non distruttivi.
+3. Riduzione ulteriore complessita UI `/calls` (estrazione modali principali in step successivo).
 
 ---
 
@@ -258,6 +259,8 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 - `2026-03-24`: completati anche `TC-07` e `TC-09`; prossimo blocco critico = `TC-08`.
 - `2026-03-24`: `TC-08` completato con migration additiva (nessuna policy esistente rimossa).
 - `2026-03-24`: `TC-10` completato con nuovo modulo condiviso `src/app/api/integrations/google/utils.ts`.
+- `2026-03-24`: avviato `TC-11` con estrazione tipi/helper/componenti da `calls/page.tsx`.
+- `2026-03-24`: `TC-11` completato con hook `useCallsData` + ulteriore decomposizione del file pagina.
 
 ---
 
@@ -441,6 +444,52 @@ Prossimo passo:
   - `npm run build` (ok).
 - Esito: `DONE`
 - Prossimo passo: `TC-11`
+
+#### 2026-03-24
+- Ticket: `TC-11`
+- Stato prima: `TODO`
+- Azione eseguita:
+  - estratti tipi e helper di `/calls` in moduli dedicati:
+    - `src/app/calls/types.ts`
+    - `src/app/calls/utils.ts`
+  - estratti componenti UI riusabili:
+    - `src/app/calls/components/CallsTimePicker.tsx`
+    - `src/app/calls/components/IosToggleRow.tsx`
+  - `src/app/calls/page.tsx` aggiornato per usare import dai nuovi moduli.
+- File toccati:
+  - `src/app/calls/page.tsx`
+  - `src/app/calls/types.ts`
+  - `src/app/calls/utils.ts`
+  - `src/app/calls/components/CallsTimePicker.tsx`
+  - `src/app/calls/components/IosToggleRow.tsx`
+- Verifica eseguita:
+  - `npm run lint` (ok);
+  - `npm run build` (ok).
+- Esito: `IN_PROGRESS`
+- Prossimo passo: `estrarre data layer in hook dedicato (TC-11 parte 2)`
+
+#### 2026-03-24
+- Ticket: `TC-11`
+- Stato prima: `IN_PROGRESS`
+- Azione eseguita:
+  - introdotto hook `src/app/calls/useCallsData.ts` per stato/data layer di:
+    - sync e stato integrazione Google,
+    - caricamento eventi settimana,
+    - suggerimenti/eventi colleghi.
+  - `src/app/calls/page.tsx` aggiornato per consumare hook e componenti estratti.
+  - riduzione dimensione file pagina: `2662 -> 1813` righe.
+- File toccati:
+  - `src/app/calls/page.tsx`
+  - `src/app/calls/useCallsData.ts`
+  - `src/app/calls/utils.ts`
+  - `src/app/calls/types.ts`
+  - `src/app/calls/components/CallsTimePicker.tsx`
+  - `src/app/calls/components/IosToggleRow.tsx`
+- Verifica eseguita:
+  - `npm run lint` (ok);
+  - `npm run build` (ok).
+- Esito: `DONE`
+- Prossimo passo: `TC-12`
 
 ---
 

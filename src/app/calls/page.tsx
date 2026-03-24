@@ -4,584 +4,78 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
   type FormEvent,
 } from "react";
+import CallsTimePicker from "@/app/calls/components/CallsTimePicker";
+import IosToggleRow from "@/app/calls/components/IosToggleRow";
+import type {
+  CalendarEvent,
+  CreateEventFormState,
+  CreateEventStep,
+  EventEditFormState,
+  EventMutationState,
+  RsvpStatus,
+  TimedEventLayout,
+} from "@/app/calls/types";
+import { useCallsData } from "@/app/calls/useCallsData";
+import {
+  asDate,
+  attendeeStatusClass,
+  attendeeStatusRank,
+  clamp,
+  combineLocalDateAndTime,
+  EVENT_MIN_HEIGHT_PX,
+  formatTime,
+  getColorForEmail,
+  getDateBounds,
+  getDefaultCreateEventFormState,
+  getDefaultEventEditFormState,
+  getEventAttendees,
+  GRID_HEIGHT,
+  hasDateGaps,
+  hexToRgba,
+  HOURS_END,
+  HOURS_START,
+  layoutOverlappingTimedEvents,
+  normalizeAttendeeStatus,
+  normalizeEmail,
+  parseReminderMinutesFromText,
+  SEND_UPDATES_OPTIONS,
+  shiftQuarterHourTime,
+  splitAttendeeCandidates,
+  VISIBILITY_OPTIONS,
+} from "@/app/calls/utils";
 import DatePicker from "@/components/DatePicker";
 import Icon from "@/components/Icon";
 import Nav from "@/components/Nav";
-import Select, { type SelectOption } from "@/components/Select";
-import { ensureSession } from "@/lib/autoSession";
+import Select from "@/components/Select";
 import { addDays, formatDisplayDate, formatISODate, startOfWeek } from "@/lib/tasks";
-import { supabase } from "@/lib/supabaseClient";
-
-type CalendarAttendee = {
-  email?: string | null;
-  displayName?: string | null;
-  responseStatus?: string | null;
-  organizer?: boolean;
-  optional?: boolean;
-  self?: boolean;
-};
-
-type CalendarEvent = {
-  id: string;
-  title: string | null;
-  description: string | null;
-  starts_at: string | null;
-  ends_at: string | null;
-  is_all_day: boolean;
-  meeting_url: string | null;
-  status: string;
-  attendees: CalendarAttendee[] | null;
-  ownerEmail?: string | null;
-  readOnly?: boolean;
-  calendarColor?: string | null;
-};
-
-type GoogleStatus = {
-  connected: boolean;
-  provider: "GOOGLE";
-  providerAccountEmail?: string | null;
-  lastSyncAt?: string | null;
-  lastSyncError?: string | null;
-};
-
-type CreateEventFormState = {
-  title: string;
-  description: string;
-  location: string;
-  isAllDay: boolean;
-  selectedDates: string[];
-  startTime: string;
-  endTime: string;
-  attendeeEmails: string[];
-  addGoogleMeet: boolean;
-  visibility: "default" | "public" | "private" | "confidential";
-  guestsCanInviteOthers: boolean;
-  guestsCanModify: boolean;
-  guestsCanSeeOtherGuests: boolean;
-  sendUpdates: "all" | "externalOnly" | "none";
-  useDefaultReminders: boolean;
-  reminderMinutesText: string;
-};
-
-type CreateEventStep = 1 | 2 | 3;
-type EventMutationState = null | "saving" | "deleting" | "addingAttendee";
-
-type EventEditFormState = {
-  title: string;
-  description: string;
-  isAllDay: boolean;
-  startDate: string;
-  endDate: string;
-  startTime: string;
-  endTime: string;
-};
-
-const HOURS_START = 8;
-const HOURS_END = 20;
-const GRID_HEIGHT = 430;
-const EVENT_MIN_HEIGHT_PX = 14;
-const COLLEAGUE_COLOR_PALETTE = [
-  "#1a73e8",
-  "#d93025",
-  "#188038",
-  "#9334e6",
-  "#ef6c00",
-  "#0097a7",
-  "#7b1fa2",
-  "#5f6368",
-];
-
-const VISIBILITY_OPTIONS: SelectOption[] = [
-  { value: "default", label: "Default calendario" },
-  { value: "private", label: "Privato" },
-  { value: "public", label: "Pubblico" },
-  { value: "confidential", label: "Confidenziale" },
-];
-
-const SEND_UPDATES_OPTIONS: SelectOption[] = [
-  { value: "all", label: "Invia inviti a tutti" },
-  { value: "externalOnly", label: "Solo invitati esterni" },
-  { value: "none", label: "Non inviare inviti" },
-];
-
-function formatTime(value: Date): string {
-  return new Intl.DateTimeFormat("it-IT", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
-}
-
-function asDate(value: string | null): Date | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getEventAttendees(event: CalendarEvent): CalendarAttendee[] {
-  if (!Array.isArray(event.attendees)) return [];
-  return event.attendees.filter((attendee) => Boolean(attendee));
-}
-
-type AttendeeStatusGroup = "accepted" | "tentative" | "declined" | "needsAction";
-type RsvpStatus = Exclude<AttendeeStatusGroup, "needsAction">;
-
-function normalizeAttendeeStatus(status: string | null | undefined): AttendeeStatusGroup {
-  if (status === "accepted") return "accepted";
-  if (status === "tentative") return "tentative";
-  if (status === "declined") return "declined";
-  return "needsAction";
-}
-
-function attendeeStatusClass(status: AttendeeStatusGroup): string {
-  if (status === "accepted") return "calls-attendee-accepted";
-  if (status === "tentative") return "calls-attendee-tentative";
-  if (status === "declined") return "calls-attendee-declined";
-  return "calls-attendee-pending";
-}
-
-function attendeeStatusRank(status: AttendeeStatusGroup): number {
-  if (status === "accepted") return 0;
-  if (status === "tentative") return 1;
-  if (status === "declined") return 2;
-  return 3;
-}
-
-function formatDateInputValue(value: Date): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-// For all-day events stored as UTC timestamps, use UTC date parts to avoid timezone shifts.
-function formatDateInputValueUTC(value: Date): string {
-  const year = value.getUTCFullYear();
-  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(value.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatTimeInputValue(value: Date): string {
-  const hour = String(value.getHours()).padStart(2, "0");
-  const minute = String(value.getMinutes()).padStart(2, "0");
-  return `${hour}:${minute}`;
-}
-
-function getDefaultEventEditFormState(event: CalendarEvent): EventEditFormState {
-  const startDate = asDate(event.starts_at) ?? new Date();
-  const endDateRaw = asDate(event.ends_at);
-  const fallbackEnd = new Date(startDate.getTime() + 30 * 60 * 1000);
-  const safeEnd = endDateRaw && endDateRaw > startDate ? endDateRaw : fallbackEnd;
-
-  // All-day events are stored as UTC noon timestamps: use UTC date methods to
-  // extract the correct calendar date regardless of the user's timezone.
-  const dateToString = event.is_all_day ? formatDateInputValueUTC : formatDateInputValue;
-  const startDateValue = dateToString(startDate);
-  const allDayEndCandidate = new Date(safeEnd.getTime() - 24 * 60 * 60 * 1000);
-  const allDayEndDateValue =
-    allDayEndCandidate >= startDate ? allDayEndCandidate : startDate;
-
-  return {
-    title: event.title ?? "",
-    description: event.description ?? "",
-    isAllDay: event.is_all_day,
-    startDate: startDateValue,
-    endDate: event.is_all_day
-      ? dateToString(allDayEndDateValue)
-      : dateToString(safeEnd),
-    startTime: formatTimeInputValue(startDate),
-    endTime: formatTimeInputValue(safeEnd),
-  };
-}
-
-function roundDateToNextQuarterHour(date: Date): Date {
-  const next = new Date(date);
-  next.setSeconds(0, 0);
-  const minutes = next.getMinutes();
-  const rounded = Math.ceil(minutes / 15) * 15;
-  if (rounded === 60) {
-    next.setHours(next.getHours() + 1, 0, 0, 0);
-  } else {
-    next.setMinutes(rounded, 0, 0);
-  }
-  return next;
-}
-
-function getDefaultCreateEventFormState(): CreateEventFormState {
-  const now = new Date();
-  const start = roundDateToNextQuarterHour(now);
-  const end = new Date(start.getTime() + 30 * 60 * 1000);
-  const dateInput = formatDateInputValue(start);
-
-  return {
-    title: "",
-    description: "",
-    location: "",
-    isAllDay: false,
-    selectedDates: [dateInput],
-    startTime: formatTimeInputValue(start),
-    endTime: formatTimeInputValue(end),
-    attendeeEmails: [],
-    addGoogleMeet: true,
-    visibility: "default",
-    guestsCanInviteOthers: true,
-    guestsCanModify: false,
-    guestsCanSeeOtherGuests: true,
-    sendUpdates: "all",
-    useDefaultReminders: true,
-    reminderMinutesText: "10,30",
-  };
-}
-
-function normalizeEmail(value: string): string | null {
-  const next = value.trim().toLowerCase();
-  if (!next) return null;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next)) return null;
-  return next;
-}
-
-function getDateBounds(values: string[]): { startDate: string; endDate: string } | null {
-  const cleaned = values.filter(Boolean).sort();
-  if (cleaned.length === 0) return null;
-  return {
-    startDate: cleaned[0],
-    endDate: cleaned[cleaned.length - 1],
-  };
-}
-
-function hasDateGaps(values: string[]): boolean {
-  const cleaned = Array.from(new Set(values.filter(Boolean))).sort();
-  if (cleaned.length <= 1) return false;
-  for (let index = 1; index < cleaned.length; index += 1) {
-    const previous = new Date(`${cleaned[index - 1]}T00:00:00`);
-    const current = new Date(`${cleaned[index]}T00:00:00`);
-    if (
-      Number.isNaN(previous.getTime()) ||
-      Number.isNaN(current.getTime()) ||
-      current.getTime() - previous.getTime() !== 24 * 60 * 60 * 1000
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function parseReminderMinutesFromText(value: string): number[] {
-  const tokens = value
-    .split(/[\s,;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const asNumbers = tokens
-    .map((token) => Number.parseInt(token, 10))
-    .filter((num) => Number.isInteger(num) && num >= 0 && num <= 40320);
-  return Array.from(new Set(asNumbers)).sort((a, b) => a - b);
-}
-
-function combineLocalDateAndTime(date: string, time: string): string | null {
-  if (!date || !time) return null;
-  const composed = `${date}T${time}`;
-  const parsed = new Date(composed);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString();
-}
-
-const TIME_OPTIONS = Array.from({ length: 96 }, (_, index) => {
-  const hour = String(Math.floor(index / 4)).padStart(2, "0");
-  const minute = String((index % 4) * 15).padStart(2, "0");
-  return `${hour}:${minute}`;
-});
-
-function getTimeOptionIndex(value: string): number {
-  const index = TIME_OPTIONS.indexOf(value);
-  return index >= 0 ? index : 0;
-}
-
-function shiftQuarterHourTime(value: string, quarterSteps: number): string {
-  const totalOptions = TIME_OPTIONS.length;
-  const index = getTimeOptionIndex(value);
-  const normalizedShift = ((quarterSteps % totalOptions) + totalOptions) % totalOptions;
-  return TIME_OPTIONS[(index + normalizedShift) % totalOptions];
-}
-
-function splitAttendeeCandidates(value: string): string[] {
-  return value
-    .split(/[\s,;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(index);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-function getColorForEmail(email: string): string {
-  const normalized = email.trim().toLowerCase();
-  if (!normalized) return COLLEAGUE_COLOR_PALETTE[0];
-  const index = hashString(normalized) % COLLEAGUE_COLOR_PALETTE.length;
-  return COLLEAGUE_COLOR_PALETTE[index];
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const safe = hex.replace("#", "");
-  const full =
-    safe.length === 3
-      ? safe
-          .split("")
-          .map((char) => `${char}${char}`)
-          .join("")
-      : safe;
-  const red = Number.parseInt(full.slice(0, 2), 16);
-  const green = Number.parseInt(full.slice(2, 4), 16);
-  const blue = Number.parseInt(full.slice(4, 6), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-}
-
-type TimedEventLayout = {
-  event: CalendarEvent;
-  segmentStart: Date;
-  segmentEnd: Date;
-  startMinutes: number;
-  endMinutes: number;
-  top: number;
-  height: number;
-  pixelHeight: number;
-  columnIndex: number;
-  columnCount: number;
-};
-
-function layoutOverlappingTimedEvents(segments: TimedEventLayout[]): TimedEventLayout[] {
-  if (segments.length <= 1) {
-    return segments.map((segment) => ({ ...segment, columnIndex: 0, columnCount: 1 }));
-  }
-
-  const sorted = [...segments].sort((left, right) => {
-    if (left.startMinutes !== right.startMinutes) {
-      return left.startMinutes - right.startMinutes;
-    }
-    const leftDuration = left.endMinutes - left.startMinutes;
-    const rightDuration = right.endMinutes - right.startMinutes;
-    return rightDuration - leftDuration;
-  });
-
-  const groups: TimedEventLayout[][] = [];
-  let currentGroup: TimedEventLayout[] = [];
-  let currentGroupEnd = -Infinity;
-
-  for (const segment of sorted) {
-    if (currentGroup.length === 0) {
-      currentGroup = [segment];
-      currentGroupEnd = segment.endMinutes;
-      continue;
-    }
-
-    if (segment.startMinutes < currentGroupEnd) {
-      currentGroup.push(segment);
-      currentGroupEnd = Math.max(currentGroupEnd, segment.endMinutes);
-      continue;
-    }
-
-    groups.push(currentGroup);
-    currentGroup = [segment];
-    currentGroupEnd = segment.endMinutes;
-  }
-
-  if (currentGroup.length > 0) {
-    groups.push(currentGroup);
-  }
-
-  const positioned: TimedEventLayout[] = [];
-
-  for (const group of groups) {
-    const columnEndMinutes: number[] = [];
-    const withColumns = group.map((segment) => ({ ...segment, columnIndex: 0, columnCount: 1 }));
-
-    for (const segment of withColumns) {
-      let column = 0;
-      while (
-        column < columnEndMinutes.length &&
-        segment.startMinutes < columnEndMinutes[column]
-      ) {
-        column += 1;
-      }
-
-      if (column === columnEndMinutes.length) {
-        columnEndMinutes.push(segment.endMinutes);
-      } else {
-        columnEndMinutes[column] = segment.endMinutes;
-      }
-
-      segment.columnIndex = column;
-    }
-
-    const totalColumns = Math.max(1, columnEndMinutes.length);
-    for (const segment of withColumns) {
-      segment.columnCount = totalColumns;
-      positioned.push(segment);
-    }
-  }
-
-  return positioned;
-}
-
-type IosToggleRowProps = {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  description?: string;
-  disabled?: boolean;
-};
-
-function IosToggleRow({
-  label,
-  checked,
-  onChange,
-  description,
-  disabled = false,
-}: IosToggleRowProps) {
-  const inputId = useId();
-  return (
-    <label
-      htmlFor={inputId}
-      className={`calls-ios-toggle-row ${disabled ? "is-disabled" : ""}`.trim()}
-    >
-      <div className="calls-ios-toggle-copy">
-        <p className="calls-ios-toggle-label">{label}</p>
-        {description ? <p className="calls-ios-toggle-description">{description}</p> : null}
-      </div>
-      <span className="calls-ios-toggle-wrap">
-        <input
-          id={inputId}
-          type="checkbox"
-          className="calls-ios-toggle-input"
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-          disabled={disabled}
-          aria-label={label}
-        />
-        <span className="calls-ios-toggle" aria-hidden="true">
-          <span className="calls-ios-toggle-knob" />
-        </span>
-      </span>
-    </label>
-  );
-}
-
-function CallsTimePicker({
-  label,
-  value,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const isOpen = open && !disabled;
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function handleClickOutside(event: MouseEvent) {
-      if (!rootRef.current) return;
-      if (rootRef.current.contains(event.target as Node)) return;
-      setOpen(false);
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (!menuRef.current) return;
-    const activeIndex = getTimeOptionIndex(value);
-    const itemHeight = 32;
-    const nextScrollTop = Math.max(0, (activeIndex - 2) * itemHeight);
-    menuRef.current.scrollTop = nextScrollTop;
-  }, [isOpen, value]);
-
-  return (
-    <div className="calls-create-time-field calls-time-dropdown" ref={rootRef}>
-      <span className="calls-create-time-caption" aria-hidden="true">
-        {label}
-      </span>
-      <button
-        type="button"
-        className="glass-input calls-time-overlay-trigger calls-time-dropdown-trigger"
-        onClick={() => setOpen((current) => !current)}
-        disabled={disabled}
-        aria-label={`Seleziona ora ${label.toLowerCase()}`}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-      >
-        <span>{value}</span>
-        <span className="calls-time-overlay-caret" aria-hidden="true">
-          ▾
-        </span>
-      </button>
-      {isOpen ? (
-        <div className="calls-time-dropdown-menu" role="listbox" ref={menuRef}>
-          {TIME_OPTIONS.map((option) => (
-            <button
-              key={`${label}-${option}`}
-              type="button"
-              className={`calls-time-dropdown-option ${
-                option === value ? "is-active" : ""
-              }`.trim()}
-              role="option"
-              aria-selected={option === value}
-              onClick={() => {
-                onChange(option);
-                setOpen(false);
-              }}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 export default function CallsPage() {
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [colleagueEvents, setColleagueEvents] = useState<CalendarEvent[]>([]);
-  const [connected, setConnected] = useState(false);
-  const [, setStatus] = useState<GoogleStatus | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [, setErr] = useState<string | null>(null);
+  const {
+    connected,
+    syncing,
+    setEvents,
+    mergedEvents,
+    knownAttendeeEmails,
+    loadKnownAttendeeEmails,
+    getAccessToken,
+    loadEvents,
+    loadStatus,
+    handleManualSync,
+    colleagueInput,
+    setColleagueInput,
+    colleagueSuggestions,
+    colleagueSelectedEmails,
+    colleagueError,
+    setColleagueError,
+    addColleagueEmail,
+    removeColleagueEmail,
+  } = useCallsData({ weekStart });
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [createStep, setCreateStep] = useState<CreateEventStep>(1);
@@ -590,7 +84,6 @@ export default function CallsPage() {
   );
   const [createAttendeeInput, setCreateAttendeeInput] = useState("");
   const [createAttendeeError, setCreateAttendeeError] = useState<string | null>(null);
-  const [knownAttendeeEmails, setKnownAttendeeEmails] = useState<string[]>([]);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createTitleInvalidFlash, setCreateTitleInvalidFlash] = useState(false);
@@ -600,13 +93,6 @@ export default function CallsPage() {
   const [eventEditForm, setEventEditForm] = useState<EventEditFormState | null>(null);
   const [eventMutationState, setEventMutationState] = useState<EventMutationState>(null);
   const [eventMutationError, setEventMutationError] = useState<string | null>(null);
-  const [colleagueInput, setColleagueInput] = useState("");
-  const [colleagueSuggestions, setColleagueSuggestions] = useState<string[]>([]);
-  const [colleagueSelectedEmails, setColleagueSelectedEmails] = useState<string[]>([]);
-  const [, setColleagueLoadingSuggestions] = useState(false);
-  const [, setColleagueLoadingEvents] = useState(false);
-  const [colleagueError, setColleagueError] = useState<string | null>(null);
-  const autoSyncDoneRef = useRef(false);
   const createEventFormRef = useRef<HTMLFormElement | null>(null);
   const createTitleInputRef = useRef<HTMLInputElement | null>(null);
   const createTitleFlashTimerRef = useRef<number | null>(null);
@@ -631,10 +117,6 @@ export default function CallsPage() {
   const hours = useMemo(
     () => Array.from({ length: HOURS_END - HOURS_START + 1 }, (_, idx) => HOURS_START + idx),
     []
-  );
-  const mergedEvents = useMemo(
-    () => [...events, ...colleagueEvents],
-    [colleagueEvents, events]
   );
 
   const eventsByDay = useMemo(() => {
@@ -678,337 +160,6 @@ export default function CallsPage() {
 
     return map;
   }, [days, mergedEvents]);
-
-  const loadEvents = useCallback(async () => {
-    const start = new Date(weekStart);
-    start.setHours(0, 0, 0, 0);
-    const end = addDays(start, 7);
-    const columns =
-      "id,title,description,starts_at,ends_at,is_all_day,meeting_url,status,attendees";
-
-    const [withinWindow, overlappingFromPast] = await Promise.all([
-      supabase
-        .from("external_calendar_events")
-        .select(columns)
-        .neq("status", "cancelled")
-        .gte("starts_at", start.toISOString())
-        .lt("starts_at", end.toISOString()),
-      supabase
-        .from("external_calendar_events")
-        .select(columns)
-        .neq("status", "cancelled")
-        .lt("starts_at", start.toISOString())
-        .gt("ends_at", start.toISOString()),
-    ]);
-
-    if (withinWindow.error) {
-      throw new Error(withinWindow.error.message);
-    }
-    if (overlappingFromPast.error) {
-      throw new Error(overlappingFromPast.error.message);
-    }
-
-    const merged = new Map<string, CalendarEvent>();
-    for (const row of (withinWindow.data ?? []) as CalendarEvent[]) {
-      merged.set(row.id, row);
-    }
-    for (const row of (overlappingFromPast.data ?? []) as CalendarEvent[]) {
-      merged.set(row.id, row);
-    }
-
-    const sorted = Array.from(merged.values()).sort((left, right) => {
-      const leftStart = asDate(left.starts_at)?.getTime() ?? 0;
-      const rightStart = asDate(right.starts_at)?.getTime() ?? 0;
-      return leftStart - rightStart;
-    });
-
-    setEvents(
-      sorted.map((event) => ({
-        ...event,
-        readOnly: false,
-        calendarColor: null,
-      }))
-    );
-  }, [weekStart]);
-
-  const loadKnownAttendeeEmails = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("external_calendar_events")
-      .select("attendees")
-      .neq("status", "cancelled")
-      .order("starts_at", { ascending: false })
-      .limit(350);
-
-    if (error) {
-      return;
-    }
-
-    const next = new Set<string>();
-    for (const row of data ?? []) {
-      const attendees = Array.isArray((row as { attendees?: unknown }).attendees)
-        ? ((row as { attendees?: CalendarAttendee[] }).attendees ?? [])
-        : [];
-      for (const attendee of attendees) {
-        const normalized = normalizeEmail(attendee?.email ?? "");
-        if (normalized) {
-          next.add(normalized);
-        }
-      }
-    }
-    setKnownAttendeeEmails(Array.from(next).sort((a, b) => a.localeCompare(b)));
-  }, []);
-
-  const getAccessToken = useCallback(async () => {
-    const session = await ensureSession();
-    return session?.access_token ?? null;
-  }, []);
-
-  const loadStatus = useCallback(
-    async (accessToken: string) => {
-      const response = await fetch("/api/integrations/google/status", {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      const payload = (await response.json()) as GoogleStatus & { error?: string };
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Errore stato integrazione.");
-      }
-      setStatus(payload);
-      setConnected(payload.connected === true);
-      return payload;
-    },
-    []
-  );
-
-  const runSync = useCallback(
-    async (accessToken: string, forceFullSync = false) => {
-      const response = await fetch("/api/integrations/google/sync", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ forceFullSync }),
-      });
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        upsertedCount?: number;
-      };
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? "Sync non riuscita.");
-      }
-      return payload;
-    },
-    []
-  );
-
-  const refreshPageData = useCallback(
-    async (withAutoSync: boolean) => {
-      setErr(null);
-      try {
-        const accessToken = await getAccessToken();
-        if (!accessToken) {
-          setConnected(false);
-          setStatus(null);
-          setEvents([]);
-          setColleagueEvents([]);
-          return;
-        }
-
-        const integrationStatus = await loadStatus(accessToken);
-        if (integrationStatus.connected && withAutoSync && !autoSyncDoneRef.current) {
-          setSyncing(true);
-          try {
-            await runSync(accessToken, false);
-            autoSyncDoneRef.current = true;
-            await loadStatus(accessToken);
-          } finally {
-            setSyncing(false);
-          }
-        }
-
-        await loadEvents();
-      } catch (error) {
-        setErr(error instanceof Error ? error.message : "Errore caricamento call.");
-      }
-    },
-    [getAccessToken, loadEvents, loadStatus, runSync]
-  );
-
-  useEffect(() => {
-    void refreshPageData(true);
-  }, [refreshPageData]);
-
-  useEffect(() => {
-    void refreshPageData(false);
-  }, [weekStart, refreshPageData]);
-
-  async function handleManualSync() {
-    setSyncing(true);
-    setErr(null);
-    try {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        setErr("Sessione non disponibile.");
-        return;
-      }
-      await runSync(accessToken, false);
-      await loadStatus(accessToken);
-      await loadEvents();
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : "Errore sync.");
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  const loadColleagueSuggestions = useCallback(async (query: string) => {
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) {
-      setColleagueSuggestions([]);
-      return;
-    }
-
-    setColleagueError(null);
-    setColleagueLoadingSuggestions(true);
-    try {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        setColleagueSuggestions([]);
-        return;
-      }
-
-      const response = await fetch(
-        `/api/integrations/google/colleagues?q=${encodeURIComponent(trimmed)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
-      const payload = (await response.json()) as {
-        emails?: string[];
-        error?: string;
-        warning?: string | null;
-      };
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Ricerca colleghi non riuscita.");
-      }
-
-      const available = (payload.emails ?? []).filter(
-        (email) => !colleagueSelectedEmails.includes(email)
-      );
-      setColleagueSuggestions(available.slice(0, 12));
-      if (payload.warning && available.length === 0) {
-        setColleagueError(payload.warning);
-      }
-    } catch (error) {
-      setColleagueSuggestions([]);
-      setColleagueError(
-        error instanceof Error ? error.message : "Errore ricerca colleghi."
-      );
-    } finally {
-      setColleagueLoadingSuggestions(false);
-    }
-  }, [colleagueSelectedEmails, getAccessToken]);
-
-  useEffect(() => {
-    const query = colleagueInput.trim();
-    if (!query) {
-      setColleagueSuggestions([]);
-      return;
-    }
-    const timeoutId = window.setTimeout(() => {
-      void loadColleagueSuggestions(query);
-    }, 180);
-    return () => window.clearTimeout(timeoutId);
-  }, [colleagueInput, loadColleagueSuggestions]);
-
-  useEffect(() => {
-    async function loadColleagueEvents() {
-      if (colleagueSelectedEmails.length === 0) {
-        setColleagueEvents([]);
-        return;
-      }
-
-      setColleagueLoadingEvents(true);
-      setColleagueError(null);
-      try {
-        const accessToken = await getAccessToken();
-        if (!accessToken) {
-          setColleagueEvents([]);
-          return;
-        }
-
-        const start = new Date(weekStart);
-        start.setHours(0, 0, 0, 0);
-        const end = addDays(start, 7);
-
-        const response = await fetch("/api/integrations/google/colleagues", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            emails: colleagueSelectedEmails,
-            start: start.toISOString(),
-            end: end.toISOString(),
-          }),
-        });
-
-        const payload = (await response.json()) as {
-          events?: CalendarEvent[];
-          error?: string;
-          warning?: string | null;
-        };
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Caricamento calendari colleghi non riuscito.");
-        }
-
-        const normalized = (payload.events ?? []).map((event) => {
-          const ownerEmail = event.ownerEmail?.trim().toLowerCase() ?? "";
-          return {
-            ...event,
-            ownerEmail,
-            readOnly: true,
-            calendarColor: ownerEmail ? getColorForEmail(ownerEmail) : "#5f6368",
-          };
-        });
-        setColleagueEvents(normalized);
-        setColleagueError(payload.warning ?? null);
-      } catch (error) {
-        setColleagueEvents([]);
-        setColleagueError(
-          error instanceof Error ? error.message : "Errore caricamento calendari colleghi."
-        );
-      } finally {
-        setColleagueLoadingEvents(false);
-      }
-    }
-
-    void loadColleagueEvents();
-  }, [colleagueSelectedEmails, getAccessToken, weekStart]);
-
-  function addColleagueEmail(email: string) {
-    const normalized = normalizeEmail(email);
-    if (!normalized) {
-      setColleagueError("Inserisci una mail valida.");
-      return;
-    }
-    setColleagueError(null);
-    setColleagueSelectedEmails((current) =>
-      current.includes(normalized) ? current : [...current, normalized]
-    );
-    setColleagueInput("");
-    setColleagueSuggestions([]);
-  }
-
-  function removeColleagueEmail(email: string) {
-    setColleagueSelectedEmails((current) => current.filter((item) => item !== email));
-  }
 
   function openCreateEventModal() {
     setCreateEventForm(getDefaultCreateEventFormState());
