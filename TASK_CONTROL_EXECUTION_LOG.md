@@ -229,11 +229,11 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
   - file principale drasticamente piu piccolo e leggibile.
 
 ### TC-12 - Setup test automatici minimi
-- Stato: `TODO`
+- Stato: `DONE`
 - Priorita: `P2`
 - Task tecnici:
-  - [ ] aggiungere script test.
-  - [ ] coprire endpoint critici (status/sync/events/rsvp/profile).
+  - [x] aggiungere script test.
+  - [x] coprire endpoint critici (status/sync/events/rsvp/profile).
   - [ ] integrare test smoke su flussi principali.
 - Done criteria:
   - suite minima eseguibile in CI locale.
@@ -241,8 +241,8 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 ---
 
 ## 6) Prossime 3 azioni (sempre aggiornate)
-1. TC-12 - introdurre test automatici minimi.
-2. Hardening vulnerabilita npm (`npm audit`) con fix non distruttivi.
+1. Hardening vulnerabilita npm (`npm audit`) con fix non distruttivi.
+2. Test smoke E2E minimi su flussi principali (follow-up TC-12).
 3. Riduzione ulteriore complessita UI `/calls` (estrazione modali principali in step successivo).
 
 ---
@@ -261,6 +261,7 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 - `2026-03-24`: `TC-10` completato con nuovo modulo condiviso `src/app/api/integrations/google/utils.ts`.
 - `2026-03-24`: avviato `TC-11` con estrazione tipi/helper/componenti da `calls/page.tsx`.
 - `2026-03-24`: `TC-11` completato con hook `useCallsData` + ulteriore decomposizione del file pagina.
+- `2026-03-24`: `TC-12` completato con suite Vitest API minima e script `npm test`.
 
 ---
 
@@ -490,6 +491,37 @@ Prossimo passo:
   - `npm run build` (ok).
 - Esito: `DONE`
 - Prossimo passo: `TC-12`
+
+#### 2026-03-24
+- Ticket: `TC-12`
+- Stato prima: `TODO`
+- Azione eseguita:
+  - setup test runner con Vitest (`vitest.config.ts`);
+  - aggiunti script npm:
+    - `test`
+    - `test:watch`
+  - aggiunta dipendenza dev `vitest`;
+  - implementata suite API minima:
+    - `tests/api/google-status.route.test.ts`
+    - `tests/api/profile.route.test.ts`
+    - `tests/api/google-auth-errors.route.test.ts`
+  - copertura minima endpoint critici:
+    - `status` (caso integrazione assente),
+    - `profile` (validazione timezone PATCH),
+    - guardie auth per `events`, `sync`, `rsvp`.
+- File toccati:
+  - `package.json`
+  - `package-lock.json`
+  - `vitest.config.ts`
+  - `tests/api/google-status.route.test.ts`
+  - `tests/api/profile.route.test.ts`
+  - `tests/api/google-auth-errors.route.test.ts`
+- Verifica eseguita:
+  - `npm test` (ok, 5 test passati);
+  - `npm run lint` (ok);
+  - `npm run build` (ok).
+- Esito: `DONE`
+- Prossimo passo: `Hardening npm audit + test smoke E2E (follow-up)`
 
 ---
 
