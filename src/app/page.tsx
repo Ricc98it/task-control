@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DatePicker from "@/components/DatePicker";
 import EmptyState from "@/components/EmptyState";
 import Icon from "@/components/Icon";
@@ -102,7 +102,6 @@ export default function HomePage() {
 
   // --- Drag & drop ---
   const {
-    draggingId,
     setDraggingId,
     draggingFrom,
     setDraggingFrom,
@@ -113,6 +112,28 @@ export default function HomePage() {
     draggingFromRef,
     handleDrop,
   } = useDragDrop({ moveTask, moveDeadline });
+
+  function openMovingTaskModal(task: Task) {
+    setMovingTaskTarget(task);
+    setMovingTaskWorkingDays(task.work_days ?? []);
+  }
+
+  function openMovingDeadlineModal(task: Task) {
+    setMovingDeadlineTarget(task);
+    setMovingDeadlineDate(task.due_date ?? "");
+  }
+
+  function closeMovingTaskModal() {
+    if (movingTaskId) return;
+    setMovingTaskTarget(null);
+    setMovingTaskWorkingDays([]);
+  }
+
+  function closeMovingDeadlineModal() {
+    if (movingDeadlineId) return;
+    setMovingDeadlineTarget(null);
+    setMovingDeadlineDate("");
+  }
 
   // --- Swipe & long press ---
   const {
@@ -128,8 +149,8 @@ export default function HomePage() {
     isMobile,
     goPrevDay,
     goNextDay,
-    setMovingTaskTarget,
-    setMovingDeadlineTarget,
+    setMovingTaskTarget: openMovingTaskModal,
+    setMovingDeadlineTarget: openMovingDeadlineModal,
     setTaskActionTarget,
   });
 
@@ -212,22 +233,18 @@ export default function HomePage() {
     if (!movingTaskTarget && !movingDeadlineTarget) return;
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      if (!movingTaskId) setMovingTaskTarget(null);
-      if (!movingDeadlineId) setMovingDeadlineTarget(null);
+      if (!movingTaskId) {
+        setMovingTaskTarget(null);
+        setMovingTaskWorkingDays([]);
+      }
+      if (!movingDeadlineId) {
+        setMovingDeadlineTarget(null);
+        setMovingDeadlineDate("");
+      }
     }
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [movingTaskId, movingTaskTarget, movingDeadlineId, movingDeadlineTarget]);
-
-  useEffect(() => {
-    if (!movingTaskTarget) return;
-    setMovingTaskWorkingDays(movingTaskTarget.work_days ?? []);
-  }, [movingTaskTarget]);
-
-  useEffect(() => {
-    if (!movingDeadlineTarget) return;
-    setMovingDeadlineDate(movingDeadlineTarget.due_date ?? "");
-  }, [movingDeadlineTarget]);
 
   useEffect(() => {
     if (!shouldOnboard) return;
@@ -666,9 +683,7 @@ export default function HomePage() {
           aria-modal="true"
           aria-label="Sposta task"
           onClick={() => {
-            if (!movingTaskId) {
-              setMovingTaskTarget(null);
-            }
+            closeMovingTaskModal();
           }}
         >
           <div
@@ -693,7 +708,7 @@ export default function HomePage() {
             <button
               type="button"
               className="project-type-cancel"
-              onClick={() => setMovingTaskTarget(null)}
+              onClick={closeMovingTaskModal}
               disabled={Boolean(movingTaskId)}
             >
               {movingTaskId ? "Sposto..." : "Annulla"}
@@ -708,9 +723,7 @@ export default function HomePage() {
           aria-modal="true"
           aria-label="Sposta scadenza"
           onClick={() => {
-            if (!movingDeadlineId) {
-              setMovingDeadlineTarget(null);
-            }
+            closeMovingDeadlineModal();
           }}
         >
           <div
@@ -731,7 +744,7 @@ export default function HomePage() {
               <button
                 type="button"
                 className="logout-confirm-btn"
-                onClick={() => setMovingDeadlineTarget(null)}
+                onClick={closeMovingDeadlineModal}
                 disabled={Boolean(movingDeadlineId)}
               >
                 Annulla

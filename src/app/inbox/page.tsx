@@ -171,11 +171,12 @@ export default function InboxPage() {
       setProjectErr("Inserisci un nome progetto.");
       return;
     }
+    const normalizedName = trimmed.toUpperCase();
 
     setProjectSaving(true);
     const { data, error } = await supabase
       .from("projects")
-      .insert({ name: trimmed, type })
+      .insert({ name: normalizedName, type })
       .select("id,name")
       .single();
     setProjectSaving(false);
@@ -226,6 +227,7 @@ export default function InboxPage() {
       delete next[id];
       return next;
     });
+    emitTasksUpdated();
   }
 
   const total = useMemo(() => tasks.length, [tasks]);

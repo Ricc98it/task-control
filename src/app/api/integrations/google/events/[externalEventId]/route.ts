@@ -49,6 +49,15 @@ type UpdateEventPayload = {
   sendUpdates?: "all" | "externalOnly" | "none";
 };
 
+class ApiRouteError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function normalizeDateTime(value?: string | null): string | null {
   if (!value) return null;
   const date = new Date(value);
@@ -184,7 +193,7 @@ function buildGooglePatchPayload(payload: UpdateEventPayload): {
 
   if (payload.title !== undefined) {
     const title = payload.title.trim();
-    if (!title) throw new Error("Titolo evento obbligatorio.");
+    if (!title) throw new ApiRouteError("Titolo evento obbligatorio.", 400);
     event.summary = title;
   }
 
@@ -204,10 +213,16 @@ function buildGooglePatchPayload(payload: UpdateEventPayload): {
     const startDate = payload.startDate?.trim();
     const endDate = payload.endDate?.trim() || startDate;
     if (!startDate || !endDate) {
-      throw new Error("Data inizio/fine obbligatoria per evento giornaliero.");
+      throw new ApiRouteError(
+        "Data inizio/fine obbligatoria per evento giornaliero.",
+        400
+      );
     }
     if (endDate < startDate) {
-      throw new Error("La data fine non può essere prima della data inizio.");
+      throw new ApiRouteError(
+        "La data fine non può essere prima della data inizio.",
+        400
+      );
     }
     event.start = {
       date: dateOnly(startDate),
@@ -221,10 +236,13 @@ function buildGooglePatchPayload(payload: UpdateEventPayload): {
     const startDateTime = toIsoDateTime(payload.startDateTime);
     const endDateTime = toIsoDateTime(payload.endDateTime);
     if (!startDateTime || !endDateTime) {
-      throw new Error("Data/ora inizio e fine obbligatorie.");
+      throw new ApiRouteError("Data/ora inizio e fine obbligatorie.", 400);
     }
     if (new Date(endDateTime).getTime() <= new Date(startDateTime).getTime()) {
-      throw new Error("L'orario di fine deve essere successivo all'inizio.");
+      throw new ApiRouteError(
+        "L'orario di fine deve essere successivo all'inizio.",
+        400
+      );
     }
     event.start = {
       dateTime: startDateTime,
@@ -237,7 +255,7 @@ function buildGooglePatchPayload(payload: UpdateEventPayload): {
   }
 
   if (Object.keys(event).length === 0) {
-    throw new Error("Nessun campo da aggiornare.");
+    throw new ApiRouteError("Nessun campo da aggiornare.", 400);
   }
 
   return {
@@ -262,10 +280,10 @@ async function loadEventAndIntegration(
     .maybeSingle();
 
   if (eventError) {
-    throw new Error(eventError.message);
+    throw new ApiRouteError(eventError.message, 500);
   }
   if (!eventData) {
-    throw new Error("Evento non trovato.");
+    throw new ApiRouteError("Evento non trovato.", 404);
   }
   const eventRow = eventData as ExternalCalendarEventRow;
 
@@ -280,10 +298,10 @@ async function loadEventAndIntegration(
     .maybeSingle();
 
   if (integrationError) {
-    throw new Error(integrationError.message);
+    throw new ApiRouteError(integrationError.message, 500);
   }
   if (!integrationData) {
-    throw new Error("Google integration not connected.");
+    throw new ApiRouteError("Google integration not connected.", 404);
   }
 
   return {
@@ -380,6 +398,14 @@ export async function PATCH(
     if (error instanceof ServerAuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
+    if (error instanceof ApiRouteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof GoogleApiError) {
+      const message = getReadableEventMutationErrorMessage(error);
+      const status = error.status >= 400 && error.status < 500 ? error.status : 502;
+      return NextResponse.json({ error: message }, { status });
+    }
     const message = getReadableEventMutationErrorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -471,6 +497,14 @@ export async function DELETE(
   } catch (error) {
     if (error instanceof ServerAuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof ApiRouteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof GoogleApiError) {
+      const message = getReadableEventMutationErrorMessage(error);
+      const status = error.status >= 400 && error.status < 500 ? error.status : 502;
+      return NextResponse.json({ error: message }, { status });
     }
     const message = getReadableEventMutationErrorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });

@@ -85,24 +85,26 @@ export function usePlanningData(sessionState: SessionState, weekStart: Date) {
   useEffect(() => {
     if (sessionState !== "authed") return;
     let active = true;
-    setLoadingPlanning(true);
-
-    loadPlanningData()
-      .catch((error) => {
-        if (!active) return;
-        setPlanningErr(
-          error instanceof Error ? error.message : "Errore nel caricamento."
-        );
-        setTasks([]);
-        setDeadlines([]);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoadingPlanning(false);
-      });
+    const timeoutId = window.setTimeout(() => {
+      setLoadingPlanning(true);
+      loadPlanningData()
+        .catch((error) => {
+          if (!active) return;
+          setPlanningErr(
+            error instanceof Error ? error.message : "Errore nel caricamento."
+          );
+          setTasks([]);
+          setDeadlines([]);
+        })
+        .finally(() => {
+          if (!active) return;
+          setLoadingPlanning(false);
+        });
+    }, 0);
 
     return () => {
       active = false;
+      window.clearTimeout(timeoutId);
     };
   }, [loadPlanningData, sessionState]);
 

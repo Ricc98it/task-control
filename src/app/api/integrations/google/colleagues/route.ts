@@ -264,6 +264,7 @@ async function loadFallbackColleagueEmails(
           .from("calendar_integrations")
           .select("id,user_id,provider_account_email")
           .eq("provider", "GOOGLE")
+          .in("user_id", accessibleUserIds)
           .ilike("provider_account_email", `%@${domain}`)
           .not("provider_account_email", "is", null)
       )

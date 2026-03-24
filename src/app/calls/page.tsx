@@ -820,10 +820,13 @@ export default function CallsPage() {
         const integrationStatus = await loadStatus(accessToken);
         if (integrationStatus.connected && withAutoSync && !autoSyncDoneRef.current) {
           setSyncing(true);
-          await runSync(accessToken, false);
-          autoSyncDoneRef.current = true;
-          await loadStatus(accessToken);
-          setSyncing(false);
+          try {
+            await runSync(accessToken, false);
+            autoSyncDoneRef.current = true;
+            await loadStatus(accessToken);
+          } finally {
+            setSyncing(false);
+          }
         }
 
         await loadEvents();

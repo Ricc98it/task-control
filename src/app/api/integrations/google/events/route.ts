@@ -50,6 +50,15 @@ type CreateEventPayload = {
   colorId?: string;
 };
 
+class ApiRouteError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function normalizeDateTime(value?: string | null): string | null {
   if (!value) return null;
   const date = new Date(value);
@@ -201,7 +210,7 @@ function buildGoogleCreatePayload(payload: CreateEventPayload): {
 } {
   const title = payload.title?.trim();
   if (!title) {
-    throw new Error("Titolo evento obbligatorio.");
+    throw new ApiRouteError("Titolo evento obbligatorio.", 400);
   }
 
   const isAllDay = payload.isAllDay === true;
@@ -221,10 +230,16 @@ function buildGoogleCreatePayload(payload: CreateEventPayload): {
     const startDate = payload.startDate?.trim();
     const endDate = payload.endDate?.trim() || startDate;
     if (!startDate || !endDate) {
-      throw new Error("Data inizio/fine obbligatoria per evento giornaliero.");
+      throw new ApiRouteError(
+        "Data inizio/fine obbligatoria per evento giornaliero.",
+        400
+      );
     }
     if (endDate < startDate) {
-      throw new Error("La data fine non può essere prima della data inizio.");
+      throw new ApiRouteError(
+        "La data fine non può essere prima della data inizio.",
+        400
+      );
     }
     start = {
       date: dateOnly(startDate),
@@ -238,10 +253,13 @@ function buildGoogleCreatePayload(payload: CreateEventPayload): {
     const startDateTime = toIsoDateTime(payload.startDateTime);
     const endDateTime = toIsoDateTime(payload.endDateTime);
     if (!startDateTime || !endDateTime) {
-      throw new Error("Data/ora inizio e fine obbligatorie.");
+      throw new ApiRouteError("Data/ora inizio e fine obbligatorie.", 400);
     }
     if (new Date(endDateTime).getTime() <= new Date(startDateTime).getTime()) {
-      throw new Error("L'orario di fine deve essere successivo all'inizio.");
+      throw new ApiRouteError(
+        "L'orario di fine deve essere successivo all'inizio.",
+        400
+      );
     }
     start = {
       dateTime: startDateTime,
@@ -395,6 +413,14 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof ServerAuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof ApiRouteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof GoogleApiError) {
+      const message = getReadableEventCreateErrorMessage(error);
+      const status = error.status >= 400 && error.status < 500 ? error.status : 502;
+      return NextResponse.json({ error: message }, { status });
     }
     const message = getReadableEventCreateErrorMessage(error);
     return NextResponse.json({ error: message }, { status: 500 });

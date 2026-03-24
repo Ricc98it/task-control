@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { getHomeContextHints } from "@/lib/contextHints";
-import type { Task } from "@/lib/tasks";
+import { addDays, formatISODate, parseISODate, type Task } from "@/lib/tasks";
 
 interface UseContextHintParams {
   tasks: Task[];
@@ -31,10 +31,6 @@ export function useContextHint({
   today,
   yesterday,
 }: UseContextHintParams) {
-  const [homeContextHint, setHomeContextHint] = useState(
-    "Sto aggiornando le informazioni utili per oggi..."
-  );
-
   const homeContextHintOptions = useMemo(() => {
     if (loadingPlanning) return [];
 
@@ -57,19 +53,31 @@ export function useContextHint({
     );
     const overdueYesterdayDeadlines = overdueYesterdayList.length;
     const overdueYesterdayTopTitle = overdueYesterdayList[0]?.title ?? null;
-    const monday = new Date().getDay() === 1;
+    const todayDate = parseISODate(today);
+    const monday = todayDate ? todayDate.getDay() === 1 : false;
+    const twoDaysAgoIso = todayDate ? formatISODate(addDays(todayDate, -2)) : null;
 
     const signalDate = lastTaskCompletedSignal ? new Date(lastTaskCompletedSignal) : null;
+    const safeSignalDate =
+      signalDate && !Number.isNaN(signalDate.getTime()) ? signalDate : null;
     const latestDoneDate = latestDoneTaskCreatedAt ? new Date(latestDoneTaskCreatedAt) : null;
+    const safeLatestDoneDate =
+      latestDoneDate && !Number.isNaN(latestDoneDate.getTime()) ? latestDoneDate : null;
     const completionReference = (() => {
-      if (signalDate && latestDoneDate) {
-        return signalDate > latestDoneDate ? signalDate : latestDoneDate;
+      if (safeSignalDate && safeLatestDoneDate) {
+        return safeSignalDate > safeLatestDoneDate ? safeSignalDate : safeLatestDoneDate;
       }
-      return signalDate ?? latestDoneDate ?? null;
+      return safeSignalDate ?? safeLatestDoneDate ?? null;
     })();
+    const completionReferenceIsoDay = completionReference
+      ? completionReference.toISOString().slice(0, 10)
+      : null;
     const noCompletionForTwoDays =
-      completionReference !== null &&
-      Date.now() - completionReference.getTime() >= 2 * 24 * 60 * 60 * 1000;
+      Boolean(
+        twoDaysAgoIso &&
+          completionReferenceIsoDay &&
+          completionReferenceIsoDay <= twoDaysAgoIso
+      );
 
     return getHomeContextHints({
       todayTasks,
@@ -92,26 +100,14 @@ export function useContextHint({
     yesterday,
   ]);
 
-  useEffect(() => {
+  const homeContextHint = useMemo(() => {
     if (loadingPlanning) {
-      setHomeContextHint("Sto aggiornando le informazioni utili per oggi...");
-      return;
+      return "Sto aggiornando le informazioni utili per oggi...";
     }
-
     if (homeContextHintOptions.length === 0) {
-      setHomeContextHint("Settimana leggera: nessun task pianificato per oggi");
-      return;
+      return "Settimana leggera: nessun task pianificato per oggi";
     }
-
-    setHomeContextHint((previous) => {
-      if (homeContextHintOptions.length === 1) return homeContextHintOptions[0]!;
-      const pool = previous
-        ? homeContextHintOptions.filter((hint) => hint !== previous)
-        : homeContextHintOptions;
-      const source = pool.length > 0 ? pool : homeContextHintOptions;
-      const randomIndex = Math.floor(Math.random() * source.length);
-      return source[randomIndex]!;
-    });
+    return homeContextHintOptions[0]!;
   }, [homeContextHintOptions, loadingPlanning]);
 
   return { homeContextHint };

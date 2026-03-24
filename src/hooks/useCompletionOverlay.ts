@@ -5,11 +5,12 @@ import { getLastTaskCompletedAt, onTaskCompleted } from "@/lib/taskCompletion";
 
 export function useCompletionOverlay() {
   const [taskCompletedOverlayVisible, setTaskCompletedOverlayVisible] = useState(false);
-  const [lastTaskCompletedSignal, setLastTaskCompletedSignal] = useState<string | null>(null);
+  const [lastTaskCompletedSignal, setLastTaskCompletedSignal] = useState<string | null>(
+    () => getLastTaskCompletedAt()
+  );
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setLastTaskCompletedSignal(getLastTaskCompletedAt());
     return onTaskCompleted((completedAtIso) => {
       setLastTaskCompletedSignal(completedAtIso);
     });
