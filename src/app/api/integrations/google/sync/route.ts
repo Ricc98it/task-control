@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import {
   GoogleApiError,
-  type GoogleCalendarEvent,
   listGoogleCalendarEvents,
 } from "@/lib/googleCalendar";
 import {
@@ -15,6 +14,10 @@ import {
   requireUserFromAuthorizationHeader,
 } from "@/lib/serverAuth";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import {
+  extractGoogleApiErrorDetail,
+  mapGoogleEventToExternalEventRow,
+} from "@/app/api/integrations/google/utils";
 
 type CalendarIntegrationRow = {
   id: string;
@@ -30,19 +33,7 @@ type CalendarIntegrationRow = {
 
 function getReadableSyncErrorMessage(error: unknown): string {
   if (error instanceof GoogleApiError) {
-    const body = error.body as
-      | {
-          error_description?: string;
-          error?: string | { message?: string };
-          message?: string;
-        }
-      | null;
-
-    const detailed =
-      body?.error_description ??
-      (typeof body?.error === "string"
-        ? body.error
-        : body?.error?.message ?? body?.message ?? null);
+    const detailed = extractGoogleApiErrorDetail(error);
 
     if (error.status === 401) {
       return detailed
@@ -54,79 +45,6 @@ function getReadableSyncErrorMessage(error: unknown): string {
   }
 
   return error instanceof Error ? error.message : "Google calendar sync failed.";
-}
-
-function normalizeDateTime(value?: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
-}
-
-function normalizeAllDayDate(value?: string): string | null {
-  if (!value) return null;
-  const date = new Date(`${value}T12:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
-}
-
-function extractMeetingUrl(event: GoogleCalendarEvent): string | null {
-  if (event.hangoutLink) return event.hangoutLink;
-  const videoEntry = event.conferenceData?.entryPoints?.find(
-    (entry) => entry.entryPointType === "video" && entry.uri
-  );
-  if (videoEntry?.uri) return videoEntry.uri;
-
-  if (event.location) {
-    const match = /(https?:\/\/meet\.google\.com\/[a-z0-9-]+)/i.exec(event.location);
-    if (match?.[1]) return match[1];
-  }
-
-  return null;
-}
-
-function mapGoogleEventToRow(
-  event: GoogleCalendarEvent,
-  integration: CalendarIntegrationRow
-) {
-  const isAllDay = Boolean(event.start?.date && !event.start?.dateTime);
-  const startsAt = isAllDay
-    ? normalizeAllDayDate(event.start?.date)
-    : normalizeDateTime(event.start?.dateTime);
-  const endsAt = isAllDay
-    ? normalizeAllDayDate(event.end?.date)
-    : normalizeDateTime(event.end?.dateTime);
-
-  const meetingUrl = extractMeetingUrl(event);
-  const conferenceType = event.conferenceData?.conferenceSolution?.key?.type ?? null;
-
-  const attendees = (event.attendees ?? []).map((attendee) => ({
-    email: attendee.email ?? null,
-    displayName: attendee.displayName ?? null,
-    responseStatus: attendee.responseStatus ?? null,
-    organizer: Boolean(attendee.organizer),
-    optional: Boolean(attendee.optional),
-    self: Boolean(attendee.self),
-  }));
-
-  return {
-    user_id: integration.user_id,
-    integration_id: integration.id,
-    provider: "GOOGLE",
-    provider_event_id: event.id,
-    calendar_id: integration.calendar_id || "primary",
-    status: event.status ?? "confirmed",
-    title: event.summary ?? null,
-    description: event.description ?? null,
-    starts_at: startsAt,
-    ends_at: endsAt,
-    is_all_day: isAllDay,
-    meeting_url: meetingUrl,
-    meeting_provider: conferenceType,
-    attendees,
-    raw_payload: event,
-    updated_at: new Date().toISOString(),
-  };
 }
 
 function getDefaultSyncWindow() {
@@ -170,7 +88,7 @@ async function runSync(options: {
   let fetchedCount = 0;
   let upsertedCount = 0;
   let cancelledCount = 0;
-  const bufferedRows: Array<ReturnType<typeof mapGoogleEventToRow>> = [];
+  const bufferedRows: Array<ReturnType<typeof mapGoogleEventToExternalEventRow>> = [];
 
   const flush = async () => {
     if (bufferedRows.length === 0) return;
@@ -207,7 +125,7 @@ async function runSync(options: {
       if (!event.id) {
         continue;
       }
-      bufferedRows.push(mapGoogleEventToRow(event, integrationWithToken));
+      bufferedRows.push(mapGoogleEventToExternalEventRow(event, integrationWithToken));
       if (bufferedRows.length >= 500) {
         await flush();
       }

@@ -15,6 +15,16 @@ import {
   requireUserFromAuthorizationHeader,
 } from "@/lib/serverAuth";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import {
+  ApiRouteError,
+  addDaysToDateOnly,
+  dateOnly,
+  extractGoogleApiErrorDetail,
+  mapGoogleEventToExternalEventRow,
+  parseEmailList,
+  toGoogleApiStatus,
+  toIsoDateTime,
+} from "@/app/api/integrations/google/utils";
 
 type CalendarIntegrationRow = {
   id: string;
@@ -50,100 +60,6 @@ type CreateEventPayload = {
   colorId?: string;
 };
 
-class ApiRouteError extends Error {
-  status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-  }
-}
-
-function normalizeDateTime(value?: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
-}
-
-function normalizeAllDayDate(value?: string): string | null {
-  if (!value) return null;
-  const date = new Date(`${value}T12:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
-}
-
-function extractMeetingUrl(event: GoogleCalendarEvent): string | null {
-  if (event.hangoutLink) return event.hangoutLink;
-  const videoEntry = event.conferenceData?.entryPoints?.find(
-    (entry) => entry.entryPointType === "video" && entry.uri
-  );
-  if (videoEntry?.uri) return videoEntry.uri;
-
-  if (event.location) {
-    const match = /(https?:\/\/meet\.google\.com\/[a-z0-9-]+)/i.exec(event.location);
-    if (match?.[1]) return match[1];
-  }
-
-  return null;
-}
-
-function mapGoogleEventToRow(
-  event: GoogleCalendarEvent,
-  integration: CalendarIntegrationRow
-) {
-  const isAllDay = Boolean(event.start?.date && !event.start?.dateTime);
-  const startsAt = isAllDay
-    ? normalizeAllDayDate(event.start?.date)
-    : normalizeDateTime(event.start?.dateTime);
-  const endsAt = isAllDay
-    ? normalizeAllDayDate(event.end?.date)
-    : normalizeDateTime(event.end?.dateTime);
-  const meetingUrl = extractMeetingUrl(event);
-  const conferenceType = event.conferenceData?.conferenceSolution?.key?.type ?? null;
-
-  const attendees = (event.attendees ?? []).map((attendee) => ({
-    email: attendee.email ?? null,
-    displayName: attendee.displayName ?? null,
-    responseStatus: attendee.responseStatus ?? null,
-    organizer: Boolean(attendee.organizer),
-    optional: Boolean(attendee.optional),
-    self: Boolean(attendee.self),
-  }));
-
-  return {
-    user_id: integration.user_id,
-    integration_id: integration.id,
-    provider: "GOOGLE",
-    provider_event_id: event.id,
-    calendar_id: integration.calendar_id || "primary",
-    status: event.status ?? "confirmed",
-    title: event.summary ?? null,
-    description: event.description ?? null,
-    starts_at: startsAt,
-    ends_at: endsAt,
-    is_all_day: isAllDay,
-    meeting_url: meetingUrl,
-    meeting_provider: conferenceType,
-    attendees,
-    raw_payload: event,
-    updated_at: new Date().toISOString(),
-  };
-}
-
-function parseEmailList(input?: string[]): string[] {
-  if (!Array.isArray(input)) return [];
-  const set = new Set<string>();
-  for (const item of input) {
-    const normalized = item.trim().toLowerCase();
-    if (!normalized) continue;
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
-      set.add(normalized);
-    }
-  }
-  return Array.from(set);
-}
-
 function parseReminderMinutes(input?: number[]): number[] {
   if (!Array.isArray(input)) return [];
   const set = new Set<number>();
@@ -156,37 +72,9 @@ function parseReminderMinutes(input?: number[]): number[] {
   return Array.from(set).sort((a, b) => a - b);
 }
 
-function dateOnly(value: string): string {
-  return value.slice(0, 10);
-}
-
-function addDaysToDateOnly(value: string, days: number): string {
-  const date = new Date(`${dateOnly(value)}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function toIsoDateTime(value?: string): string | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString();
-}
-
 function getReadableEventCreateErrorMessage(error: unknown): string {
   if (error instanceof GoogleApiError) {
-    const body = error.body as
-      | {
-          error_description?: string;
-          error?: string | { message?: string };
-          message?: string;
-        }
-      | null;
-    const detailed =
-      body?.error_description ??
-      (typeof body?.error === "string"
-        ? body.error
-        : body?.error?.message ?? body?.message ?? null);
+    const detailed = extractGoogleApiErrorDetail(error);
 
     if (error.status === 403) {
       return detailed
@@ -388,7 +276,10 @@ export async function POST(request: NextRequest) {
       throw new Error("Google non ha restituito un ID evento valido.");
     }
 
-    const upsertPayload = mapGoogleEventToRow(createdGoogleEvent, integrationRow);
+    const upsertPayload = mapGoogleEventToExternalEventRow(
+      createdGoogleEvent,
+      integrationRow
+    );
     const { data: savedEvent, error: saveError } = await supabaseAdmin
       .from("external_calendar_events")
       .upsert(upsertPayload, { onConflict: "integration_id,provider_event_id" })
@@ -419,7 +310,7 @@ export async function POST(request: NextRequest) {
     }
     if (error instanceof GoogleApiError) {
       const message = getReadableEventCreateErrorMessage(error);
-      const status = error.status >= 400 && error.status < 500 ? error.status : 502;
+      const status = toGoogleApiStatus(error);
       return NextResponse.json({ error: message }, { status });
     }
     const message = getReadableEventCreateErrorMessage(error);

@@ -209,11 +209,11 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
   - nav/summary sempre coerenti.
 
 ### TC-10 - Estrazione util comuni Google routes
-- Stato: `TODO`
+- Stato: `DONE`
 - Priorita: `P2`
 - Task tecnici:
-  - [ ] centralizzare mapping evento/meeting/date helper.
-  - [ ] ridurre duplicazione tra route.
+  - [x] centralizzare mapping evento/meeting/date helper.
+  - [x] ridurre duplicazione tra route.
 - Done criteria:
   - funzioni duplicate ridotte e testabili.
 
@@ -240,9 +240,9 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 ---
 
 ## 6) Prossime 3 azioni (sempre aggiornate)
-1. TC-10 - estrarre util comuni route Google.
+1. TC-11 - refactor strutturale pagina Calls.
 2. TC-12 - introdurre test automatici minimi.
-3. TC-11 - refactor strutturale pagina Calls.
+3. Hardening vulnerabilita npm (`npm audit`) con fix non distruttivi.
 
 ---
 
@@ -257,6 +257,7 @@ Se c'e divergenza tra file e codice, correggere subito questo file.
 - `2026-03-24`: completare prima hardening/stabilizzazione (`TC-01..TC-06`) e poi workspace/test/refactor.
 - `2026-03-24`: completati anche `TC-07` e `TC-09`; prossimo blocco critico = `TC-08`.
 - `2026-03-24`: `TC-08` completato con migration additiva (nessuna policy esistente rimossa).
+- `2026-03-24`: `TC-10` completato con nuovo modulo condiviso `src/app/api/integrations/google/utils.ts`.
 
 ---
 
@@ -414,6 +415,32 @@ Prossimo passo:
   - `npm run build` (ok).
 - Esito: `DONE`
 - Prossimo passo: `TC-10`
+
+#### 2026-03-24
+- Ticket: `TC-10`
+- Stato prima: `TODO`
+- Azione eseguita:
+  - creato modulo condiviso `src/app/api/integrations/google/utils.ts` per:
+    - mapping evento Google -> payload DB (`external_calendar_events`);
+    - helper date/email parsing riusabili;
+    - class `ApiRouteError`;
+    - parsing dettaglio errori Google e normalizzazione status upstream.
+  - route refattorizzate per usare utility comuni:
+    - `events/route.ts`
+    - `events/[externalEventId]/route.ts`
+    - `sync/route.ts`
+    - `rsvp/route.ts`
+- File toccati:
+  - `src/app/api/integrations/google/utils.ts`
+  - `src/app/api/integrations/google/events/route.ts`
+  - `src/app/api/integrations/google/events/[externalEventId]/route.ts`
+  - `src/app/api/integrations/google/sync/route.ts`
+  - `src/app/api/integrations/google/rsvp/route.ts`
+- Verifica eseguita:
+  - `npm run lint` (ok);
+  - `npm run build` (ok).
+- Esito: `DONE`
+- Prossimo passo: `TC-11`
 
 ---
 
